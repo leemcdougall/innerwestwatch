@@ -74,7 +74,7 @@ Ingestion is automated (scheduled scans detect new Documents) but may require hu
 
 ## Issue Tracker
 
-Open work items are tracked as GitHub Issues at https://github.com/leemcdougall/tempe-latm/issues.
+Open work items are tracked as GitHub Issues at https://github.com/leemcdougall/innerwestwatch/issues.
 
 When starting a new session, run `gh issue list` to see what's open. When work is complete, close the relevant issue. Do not maintain a separate backlog file — GitHub Issues is the single source of truth for outstanding work.
 
