@@ -134,6 +134,53 @@ Known 2026 LTF meetings:
 
 ---
 
+## Session logging — do this at the end of every session
+
+Before closing out, update the following. Do not skip these even if the session was short.
+
+### Always update
+
+**`CHANGELOG.md`** — add an entry for this session:
+- Date and one-line summary as the heading
+- What was built or changed (bullet points, specific files)
+- Any decisions made and why
+- New GitHub Issues opened
+- Issues closed
+
+**`project_status.md`** (memory file) — update:
+- "Current state" section with today's date
+- What's built and live
+- Next steps in priority order
+
+**`GOALS.md`** — update if:
+- A milestone was completed (mark ✅ with date)
+- A new milestone or module was discussed
+- The architecture changed
+
+**`CONTEXT.md`** — update if:
+- A new term was defined or clarified during the session
+- An existing term's meaning shifted
+
+### Update if relevant
+
+**Memory files** — update whichever apply:
+- `cloudflare_access.md` — if any infrastructure changed (new database, new Worker, re-auth)
+- `feedback_*.md` — if Lee gave feedback on approach, corrected something, or confirmed a non-obvious decision
+- `ltf_meeting_index.md` — if item statuses changed or a new meeting was added
+- `site_design_intent.md` — if design principles evolved
+
+### Create if needed
+
+- New `docs/adr/XXXX-name.md` — if a hard-to-reverse, surprising, or genuinely trade-off decision was made
+- New `feedback_*.md` memory file — if new working style feedback doesn't fit an existing file
+- New `ltf_[date]_index.md` — if a new LTF meeting was added
+
+### Commit repo file changes
+
+Any changes to `CHANGELOG.md`, `GOALS.md`, `CONTEXT.md`, or `docs/adr/` should be committed to git at the end of the session. Follow the branch strategy — commit on the current feature branch or open a dedicated `claude/docs-update` branch if the session was documentation-only.
+
+---
+
 ## Memory system
 
 Persistent memory lives at:
