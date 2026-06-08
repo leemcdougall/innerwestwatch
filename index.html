@@ -536,9 +536,56 @@
   }
   ];
 
+  // Initial render from hardcoded data — this runs immediately so the page
+  // is never blank while the API fetch is in flight.
   allItems = ITEMS;
   buildFilterChips(ITEMS);
   renderGrid();
+
+  // ── Live data from /api/items ────────────────────────────────────────────
+  // After the initial render, fetch fresh data from the D1-backed API.
+  // On success: replace allItems, rebuild filter chips, re-render the grid.
+  // On failure: silently keep the hardcoded ITEMS — no error shown to users.
+  //
+  // If a suburb filter is already active (e.g. from a previous chip click),
+  // pass it to the API so the response is scoped to that suburb from the start.
+  (async function fetchLiveItems() {
+    try {
+      // Build API URL, passing the active suburb filter if one is set.
+      const apiUrl = activeFilter
+        ? `/api/items?suburb=${encodeURIComponent(activeFilter)}`
+        : '/api/items';
+
+      const resp = await fetch(apiUrl);
+      if (!resp.ok) return; // keep hardcoded data on HTTP error
+
+      const liveItems = await resp.json();
+      if (!Array.isArray(liveItems) || liveItems.length === 0) return;
+
+      // Replace in-memory items with live data and re-render.
+      // If we fetched with a suburb filter the live data is already filtered;
+      // we still need allItems to contain the full set for chip generation,
+      // so when a suburb filter was active we do a second unfiltered fetch.
+      if (activeFilter) {
+        // Fetch the full set in the background for chip counts.
+        const allResp = await fetch('/api/items');
+        if (allResp.ok) {
+          const allLive = await allResp.json();
+          if (Array.isArray(allLive) && allLive.length > 0) {
+            allItems = allLive;
+            buildFilterChips(allItems);
+            renderGrid(); // renderGrid re-applies activeFilter internally
+          }
+        }
+      } else {
+        allItems = liveItems;
+        buildFilterChips(allItems);
+        renderGrid();
+      }
+    } catch (_err) {
+      // Network error or JSON parse failure — keep hardcoded data silently.
+    }
+  })();
 </script>
 </body>
 </html>
