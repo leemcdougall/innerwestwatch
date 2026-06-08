@@ -58,60 +58,55 @@ Modules are independent. Each can be built and shipped without the others being 
 
 ### 0. Core — data model + database ✅ DONE (Milestone 1, 2026-06-08)
 
-- D1 schema defined (Committee, Meeting, Document, Topic, AgendaItem tables)
-- `items.json` migrated into D1 — 17 LTF 18 May 2026 items seeded
-- Frontend reads from D1 via Worker (`functions/api/items.js`)
+- D1 schema defined: `committees`, `meetings`, `topics`, `decisions`, `documents`
+- Schema redesigned 2026-06-08: `agenda_items` → `decisions`; suburb/street junction tables replaced with JSON arrays on `topics`; agenda/minutes URLs moved to `meetings`
 - `CONTEXT.md` — canonical term definitions
 
-### 1. Scanner — detect new council documents
-*Runs on a GitHub Actions schedule. Feeds all other modules.*
+### 1. Pipeline — automated ingestion ⏳ IN PROGRESS
 
-- Scan infocouncil.biz portal for new meetings across all committee types
-- Detect new Documents (agenda HTML, minutes HTML, attachments)
-- Record each Document in D1 with fetch timestamp and source hash
-- Re-scan known Documents to detect changes (e.g. minutes published after agenda)
-- Prefer HTML over PDF when both exist
+*Fetches HTML from infocouncil.biz, extracts structured data with Claude API, writes to D1.*
 
-### 2. Ingestion — extract structured data from documents
-*Transforms raw Documents into Topics and Agenda Items.*
+- `db/ingest.js` — written, not yet tested end-to-end
+- GitHub Actions workflow — written (`.github/workflows/ingest.yml`), runs Mondays 9am Sydney
+- **Blocked on:** Anthropic API key, Cloudflare D1 API token, `.env` file, GitHub secrets
 
-- Parse agenda HTML → extract item list, headlines, streets, suburbs, type
-- Parse minutes HTML → extract resolutions, amendments, outcome status
-- Handle attachment PDFs as fallback when HTML is unavailable
-- AI-assisted extraction for embedded images (maps, TGS diagrams, design plans)
-- Output: candidate AgendaItems ready for Topic linking
+Next 4 steps to unblock:
+1. Create Anthropic API key at console.anthropic.com (add $5 credit)
+2. Create Cloudflare API token with D1 write permission (dash.cloudflare.com/profile/api-tokens)
+3. Create `.env` file at repo root with all four credentials
+4. Test: `node db/ingest.js ltf-18may2026` — verify one meeting ingests correctly, then run all four
 
-### 3. Topic linking — connect items across meetings
-*Associates new Agenda Items with existing Topics.*
+### 2. Scanner — detect new meetings automatically
+*Extends the pipeline to check infocouncil.biz for new or updated documents.*
 
-- Auto-suggest links based on matching street + suburb + type
-- Flag ambiguous matches for human confirmation
-- Unlinked items remain visible on the site, marked as pending
-- Human confirmation UI (simple — could be a script or a basic admin page)
+- Check portal for new meetings not yet in D1
+- Re-check known meetings for newly published minutes
+- Run on GitHub Actions schedule — no manual triggering needed
 
-### 4. Frontend — resident-facing site
+### 3. Frontend — resident-facing site
 *What residents actually see.*
 
 - Entry points: by street, by suburb, by topic (follow), by committee
-- Entry points are open-ended — new ones added as needed
-- Topic page: current status, full history of Agenda Items, source links
+- Topic page: current status, full history of Decisions, source links
 - "Follow" via localStorage — no account required
-- Link to original infocouncil source on every item (site is a digest, not a replacement)
+- Link to original infocouncil source on every item
+
+### 4. Topic linking — connect decisions across meetings
+*When the same real-world issue appears at multiple meetings, link them to one Topic.*
+
+- Auto-suggest links based on matching street + suburb + type
+- Flag ambiguous matches for human confirmation
+- Unlinked decisions remain visible, marked pending
 
 ### 5. Document tools — make source material readable
-*Transforms council documents into resident-friendly formats.*
 
 - Convert TGS diagrams and design plan images to readable visual summaries
 - Render traffic management plan key points in plain language
-- More tools added as new document types are encountered
-- HTML preferred; PDF fallback; AI extraction for images
 
 ### 6. Backfill — open Topics from history
-*One-time process to bring in unresolved decisions predating the scanner.*
 
-- Scope: open Topics only — decisions not yet resolved, works not yet completed
-- Start from infocouncil history, work backwards until no open items remain
-- Use the same ingestion module — backfill is not a special case
+- Scope: open Topics only — decisions not yet resolved
+- Use the same pipeline — backfill is not a special case
 
 ---
 

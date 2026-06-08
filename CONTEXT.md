@@ -46,13 +46,11 @@ A Topic has a type (crossing, parking, speed, latm, event, etc.), one or more su
 
 ---
 
-## Agenda Item
+## Decision
 
-A single appearance of a Topic at a specific Meeting.
+A single appearance of a Topic at a specific Meeting — what was decided that day.
 
-One Topic may have many Agenda Items over time as it is discussed, deferred, amended, and eventually ratified. An Agenda Item that has not yet been linked to a Topic has a null topicId — it is pending human confirmation.
-
-An Agenda Item links to the Documents it came from.
+One Topic may have many Decisions over time as it is discussed, deferred, amended, and eventually ratified. Carries the resolution text and works start date. A Decision that has not yet been linked to a Topic has a null topicId — it is pending human confirmation.
 
 ---
 

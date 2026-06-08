@@ -21,5 +21,8 @@ serve.py
 # macOS metadata
 .DS_Store
 
-# Node (if ever used)
+# Node
 node_modules/
+
+# Local env — contains API keys, never commit
+.env
