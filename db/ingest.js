@@ -77,13 +77,32 @@ const MEETINGS = [
 ];
 
 // ─── fetch HTML ───────────────────────────────────────────────────────────────
-async function fetchHtml(url) {
-  console.log(`  fetching ${url}`);
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'InnerWestWatch/1.0 (council data digest; contact via github.com/leemcdougall/innerwestwatch)' },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  return res.text();
+async function fetchHtml(url, { retries = 3, timeoutMs = 120_000 } = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    if (attempt > 1) {
+      const wait = attempt * 5_000; // 10s, 15s between retries
+      console.log(`  retry ${attempt}/${retries} in ${wait / 1000}s...`);
+      await new Promise(r => setTimeout(r, wait));
+    }
+    console.log(`  fetching ${url}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'InnerWestWatch/1.0 (council data digest; contact via github.com/leemcdougall/innerwestwatch)' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.text();
+    } catch (err) {
+      lastErr = err.name === 'AbortError' ? new Error(`timed out after ${timeoutMs / 1000}s`) : err;
+      console.log(`  attempt ${attempt} failed: ${lastErr.message}`);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error(`failed after ${retries} attempts: ${lastErr.message} — ${url}`);
 }
 
 // ─── split HTML into per-item sections ───────────────────────────────────────
