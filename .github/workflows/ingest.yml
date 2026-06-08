@@ -1,0 +1,44 @@
+name: Ingest council data
+
+on:
+  # Run every Monday at 9am Sydney time (23:00 UTC Sunday)
+  # LTF meetings are typically on the third Monday of each month;
+  # minutes are published within a week or two after the meeting.
+  schedule:
+    - cron: '0 23 * * 0'
+
+  # Allow manual trigger from the GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      meeting_id:
+        description: 'Specific meeting ID to process (leave blank for all)'
+        required: false
+        type: string
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ingestion pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_DATABASE_ID: ${{ secrets.CLOUDFLARE_DATABASE_ID }}
+          CLOUDFLARE_D1_TOKEN: ${{ secrets.CLOUDFLARE_D1_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.meeting_id }}" ]; then
+            node db/ingest.js "${{ inputs.meeting_id }}"
+          else
+            node db/ingest.js
+          fi

@@ -4,6 +4,55 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-08 — Pipeline: schema redesign and automated ingestion script
+
+### What changed
+
+**Schema redesigned from scratch**
+- Old 7-table schema (with `topics`, `topic_suburbs`, `topic_streets`, `agenda_items`, `agenda_item_documents`) dropped and replaced
+- New 5-table schema: `committees`, `meetings`, `topics`, `decisions`, `documents`
+- `agenda_items` renamed to `decisions` — clearer about what the row represents
+- `topic_suburbs` and `topic_streets` junction tables replaced with JSON arrays on `topics` — simpler for now, easy to migrate later
+- `agenda_url` and `minutes_url` moved from item-level to `meetings` — they are meeting-level fields
+- D1 wiped and new schema applied
+
+**Automated ingestion pipeline (`db/ingest.js`)**
+- Fetches agenda and minutes HTML directly from infocouncil.biz
+- Deterministic parser splits HTML into per-item sections on `LTF\d+\(\d+\) Item N` boundary
+- Claude API (Haiku) extracts structured fields from agenda: `type`, `headline`, `suburbs`, `streets`
+- Claude API (Haiku) extracts from minutes: `status`, `resolution`, `works_start`
+- Writes committees → meetings → topics → decisions → documents to D1 via Cloudflare REST API
+- Handles missing minutes gracefully (items stay `on-agenda`)
+- Re-runnable: `INSERT OR REPLACE` throughout
+- Usage: `node db/ingest.js` (all meetings) or `node db/ingest.js ltf-18may2026` (one meeting)
+
+**GitHub Actions workflow (`.github/workflows/ingest.yml`)**
+- Runs every Monday at 9am Sydney time
+- Also triggerable manually from the GitHub Actions tab with optional `meeting_id` input
+- Reads secrets: `ANTHROPIC_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DATABASE_ID`, `CLOUDFLARE_D1_TOKEN`
+
+**Supporting files**
+- `package.json` created — `@anthropic-ai/sdk` dependency, `type: module`
+- `.env` added to `.gitignore`
+- `node_modules/` installed locally
+
+### Decisions made
+
+- **Manual data entry abandoned** — previous `items.json` hand-editing approach replaced by pipeline. `data/items.json` is now historical reference only; D1 is populated by `ingest.js`.
+- **Claude Haiku chosen for extraction** — fast and cheap. One meeting ingest costs ~5–10 cents.
+- **D1 write uses Cloudflare REST API** — not wrangler, so GitHub Actions can call it without wrangler auth.
+- **`migrate.js` and `seed.sql` are now obsolete** — pipeline replaces them. Left in repo for reference but no longer the source of truth.
+
+### Not yet done (blocked on credentials)
+
+- Anthropic API key not yet created — needed to run the pipeline
+- Cloudflare D1 API token not yet created — needed for D1 writes from outside wrangler
+- `.env` file not yet created locally
+- GitHub repository secrets not yet set
+- Pipeline not yet tested end-to-end
+
+---
+
 ## 2026-06-08 — Milestone 1: Database, API, and repo restructure
 
 ### Milestone 1 complete (Issue #8 closed)
