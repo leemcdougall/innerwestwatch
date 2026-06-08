@@ -1,8 +1,25 @@
+# Images and PDFs (source files, not generated assets)
 *.png
 *.pdf
+
+# Claude / agent config (local only)
 CLAUDE.md
 .claude/
+.agents/
+
+# Persistent Claude memory — never committed
+memory/
+
+# Claude Code agent state
+skills-lock.json
+
+# Throwaway dev artefacts
 ltf_report.html
-.DS_Store
 tempe_map_fragment.svg
 serve.py
+
+# macOS metadata
+.DS_Store
+
+# Node (if ever used)
+node_modules/
