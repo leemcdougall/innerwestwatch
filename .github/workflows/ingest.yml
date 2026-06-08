@@ -1,0 +1,48 @@
+name: Ingest council meetings
+
+on:
+  schedule:
+    # Every Monday at 9am AEST (11pm Sunday UTC).
+    # LTF minutes are usually published within a week of the meeting,
+    # so weekly is enough to catch new meetings and newly published minutes.
+    - cron: '0 23 * * 0'
+  workflow_dispatch:
+    inputs:
+      months:
+        description: 'How many months back to scan (default: 6)'
+        required: false
+        default: '6'
+      committee:
+        description: 'Restrict to one committee slug (e.g. ltf, council) — leave blank for all'
+        required: false
+        default: ''
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ingest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_DATABASE_ID: ${{ secrets.CLOUDFLARE_DATABASE_ID }}
+          CLOUDFLARE_D1_TOKEN: ${{ secrets.CLOUDFLARE_D1_TOKEN }}
+          GITHUB_ACTIONS: 'true'
+        run: |
+          MONTHS="${{ github.event.inputs.months || '6' }}"
+          COMMITTEE="${{ github.event.inputs.committee }}"
+          ARGS="--months $MONTHS"
+          if [ -n "$COMMITTEE" ]; then
+            ARGS="$ARGS --committee $COMMITTEE"
+          fi
+          node db/ingest.js $ARGS
