@@ -1,0 +1,9 @@
+# Cloudflare configuration for Inner West Watch
+# Database named "counciltracker" — chosen to scale beyond Inner West to any Australian council.
+name = "innerwestwatch"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "counciltracker"
+database_id = "d721d0be-87d8-45dd-b2ee-56f06d9010ba"
