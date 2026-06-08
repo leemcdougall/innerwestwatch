@@ -4,6 +4,8 @@
 
 A plain-language digest of Inner West Council decisions for residents who would never read a council agenda. Residents can find what's happening on their street, follow ongoing issues, and get context on complex decisions without decoding bureaucratic language.
 
+The project may expand beyond Inner West to other Australian councils. Preferred brand name if that happens: **counciltracker**.
+
 ---
 
 ## North star
@@ -16,18 +18,19 @@ A resident types their street name and immediately sees every open council decis
 
 | Layer | Technology |
 |---|---|
-| Frontend | Cloudflare Pages (static HTML) |
-| Dynamic queries | Cloudflare Workers |
-| Database | Cloudflare D1 (SQLite) |
-| Ingestion pipeline | GitHub Actions (scheduled) |
-| Repo | GitHub (can be private) |
-| Domain | innerwestwatch.pages.dev → custom domain (future) |
+| Frontend | Cloudflare Pages (static HTML, auto-deploy from `main`) |
+| API | Cloudflare Pages Functions (`functions/api/items.js`) |
+| Database | Cloudflare D1 (`counciltracker`, region OC/Sydney) |
+| Ingestion pipeline | GitHub Actions (scheduled — future) |
+| Repo | https://github.com/leemcdougall/innerwestwatch |
+| Live site | https://innerwestwatch.pages.dev |
+| Custom domain | Future |
 
 ---
 
 ## Core data model
 
-See `smith-st/CONTEXT.md` for canonical definitions.
+See `CONTEXT.md` (repo root) for canonical definitions.
 
 **Committee** → holds many **Meetings** → each produces **Documents** (agenda, minutes, attachments)
 
@@ -37,17 +40,28 @@ Residents follow Topics. Items are the evidence trail underneath.
 
 ---
 
+## API
+
+`GET /api/items` — served by `functions/api/items.js`
+
+Filters:
+- `?suburb=Marrickville` — civic/interest filter (case-insensitive)
+- `?street=Illawarra+Rd` — geographic filter (case-insensitive, repeatable for multiple streets)
+
+Suburb and street are intentionally separate filters — suburb boundaries do not map to physical proximity. See `docs/adr/0001-api-street-filter.md`.
+
+---
+
 ## Modules
 
-Modules are independent. Each can be built and shipped without the others being complete. The core (data model + database) must exist before any module can write to it.
+Modules are independent. Each can be built and shipped without the others being complete.
 
-### 0. Core — data model + database
-*Must be built first. Everything else depends on it.*
+### 0. Core — data model + database ✅ DONE (Milestone 1, 2026-06-08)
 
-- Define the D1 schema (Committee, Meeting, Document, Topic, AgendaItem tables)
-- Migrate current `items.json` content into D1
-- Update the frontend to read from D1 via a Worker instead of inline JSON
-- Write CONTEXT.md (done) — canonical term definitions
+- D1 schema defined (Committee, Meeting, Document, Topic, AgendaItem tables)
+- `items.json` migrated into D1 — 17 LTF 18 May 2026 items seeded
+- Frontend reads from D1 via Worker (`functions/api/items.js`)
+- `CONTEXT.md` — canonical term definitions
 
 ### 1. Scanner — detect new council documents
 *Runs on a GitHub Actions schedule. Feeds all other modules.*
@@ -103,25 +117,29 @@ Modules are independent. Each can be built and shipped without the others being 
 
 ## Milestones
 
-| # | Milestone | Depends on |
-|---|---|---|
-| 1 | D1 schema defined, items.json migrated | — |
-| 2 | Frontend reads from D1 via Worker | Milestone 1 |
-| 3 | Scanner running on schedule, new Documents detected | Milestone 1 |
-| 4 | Ingestion producing AgendaItems from LTF agendas | Milestone 3 |
-| 5 | Topic linking working for LTF items | Milestone 4 |
-| 6 | Backfill of open Topics complete | Milestone 5 |
-| 7 | Additional committee types added (Council, FMACC, etc.) | Milestone 4 |
-| 8 | Document tools (image conversion, PDF extraction) | Milestone 4 |
-| 9 | Custom domain | Any time |
+| # | Milestone | Status | Depends on |
+|---|---|---|---|
+| 1 | D1 schema defined, items.json migrated, frontend reads from Worker | ✅ Done 2026-06-08 | — |
+| 2 | Scanner running on schedule, new Documents detected | — | Milestone 1 |
+| 3 | Ingestion producing AgendaItems from LTF agendas | — | Milestone 2 |
+| 4 | Topic linking working for LTF items | — | Milestone 3 |
+| 5 | Backfill of open Topics complete | — | Milestone 4 |
+| 6 | Additional committee types added (Council, FMACC, etc.) | — | Milestone 3 |
+| 7 | Document tools (image conversion, PDF extraction) | — | Milestone 3 |
+| 8 | Custom domain | — | Any time |
 
 ---
 
 ## What's already built
 
 - Home page with suburb-filtered card feed (17 items, 18 May 2026 LTF)
-- Tempe South LATM detail page
-- `items.json` — will be migrated into D1 in Milestone 1
+- Tempe South LATM detail page (`/meetings/ltf-18may2026/tempe-south/`)
+- `data/items.json` — historical record (D1 is now source of truth)
 - `CONTEXT.md` — canonical domain glossary
+- `docs/adr/` — architecture decision records
+- `db/schema.sql` — D1 schema
+- `db/migrate.js` + `db/seed.sql` — migration tooling
+- `functions/api/items.js` — Worker API
+- `wrangler.toml` — Cloudflare config
 - Cloudflare Pages deploy (auto-deploy from `main`)
 - Branch strategy: `claude/*` → `beta` → `main`
