@@ -4,6 +4,49 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-09 — Milestone 4: topic linking schema, offline dedup tool, frontend hardcode purge
+
+### What changed
+
+**index.html — hardcoded data purged**
+- Removed the 17-item hardcoded LTF May 2026 array and the dual render path (hardcoded-first, then API override)
+- Page now fetches from `/api/items` only, with a proper loading state and error state
+- Section heading is now generic ("Recent decisions") not hardcoded to a specific meeting
+- Type tag CSS classes expanded to cover all types now in D1 (report, motion, notice-of-motion, infrastructure, etc.)
+
+**D1 schema additions (applied remotely)**
+- `topics.canonical_topic_id TEXT` — null = canonical row; non-null = merged-away duplicate pointing to its canonical parent
+- Trigger `trg_topics_no_chain` — enforces no self-reference and no pointer chaining on `canonical_topic_id`
+- `topic_merge_log` — append-only audit table for every confirmed merge
+- `merge_decisions` — disposition memory for the dedup tool (merged / dismissed_once / recurring)
+
+**API (`functions/api/items.js`)**
+- Added `WHERE t.canonical_topic_id IS NULL` so merged-away rows are never returned to the frontend
+
+**`db/dedupe.js` — offline deduplication tool**
+- Interactive CLI: finds same-type topics with overlapping streets within an 18-month window
+- Ranked by street overlap fraction (strongest candidates first)
+- Three dispositions: merge (sets canonical_topic_id + logs), dismiss once (18-month suppression), recurring (permanent suppression)
+- Dry-run mode: `node db/dedupe.js --dry-run`
+- Finds 86 candidate pairs on current data
+
+**`docs/adr/0002-topic-linking-offline-deduplication.md`**
+- Records the design decision: offline dedup over ingest-time matching
+- Documents why ingest-time matching was rejected (weak identity signal, cold-start problem, nullable FK risk)
+
+### Decisions made
+
+- Ingest-time deduplication rejected after a structured three-agent debate (pro / against / manager) that surfaced: type+street is not a reliable identity signal without a time bound; the high-confidence path fires rarely given 1.55 avg decisions per topic; nullable topic_id breaks existing query guarantees
+- `canonical_topic_id` on `topics` chosen over a `topic_links` join table — simpler for strictly one canonical row per cluster
+- Three dispositions (merge / dismiss_once / recurring) added to handle Inner West's recurring program cycles (annual LATM reviews, kerb programs, school zones)
+
+### PRs merged
+
+- PR #24: feature branch → beta
+- PR #25: beta → main (auto-deployed to https://innerwestwatch.pages.dev)
+
+---
+
 ## 2026-06-08 — Pipeline: schema redesign and automated ingestion script
 
 ### What changed
