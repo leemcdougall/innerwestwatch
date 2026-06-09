@@ -2,21 +2,23 @@
 /**
  * db/ingest.js — Inner West Watch ingestion pipeline
  *
- * Fetches agenda and minutes HTML from infocouncil.biz, uses the Claude API
- * to extract structured data from each item, and writes the results to D1.
+ * Scans infocouncil.biz for all committee meetings across the past N months,
+ * extracts structured data from each agenda and minutes using Claude, and writes
+ * to D1. Images embedded in agenda documents are fetched and passed to Claude
+ * as vision content — traffic diagrams, maps, and site plans contain important
+ * information that plain text alone misses.
  *
  * Usage:
- *   node db/ingest.js                  # process all known meetings
- *   node db/ingest.js ltf-18may2026    # process one specific meeting
+ *   node db/ingest.js                       # scan all committees, last 6 months
+ *   node db/ingest.js --months 12           # scan last 12 months
+ *   node db/ingest.js --meeting ltf-18may2026  # re-process one specific meeting
+ *   node db/ingest.js --committee ltf       # scan only LTF meetings
  *
- * Required env vars:
- *   ANTHROPIC_API_KEY   — from console.anthropic.com
+ * Required env vars (put in .env at repo root, gitignored):
+ *   ANTHROPIC_API_KEY
  *   CLOUDFLARE_ACCOUNT_ID
  *   CLOUDFLARE_DATABASE_ID
- *   CLOUDFLARE_D1_TOKEN — API token with D1 write permission
- *
- * For local development, put these in a .env file (gitignored).
- * In GitHub Actions, set them as repository secrets.
+ *   CLOUDFLARE_D1_TOKEN
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -26,7 +28,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// ─── load .env if present ─────────────────────────────────────────────────────
+// ─── load .env ────────────────────────────────────────────────────────────────
 try {
   const env = readFileSync(resolve(__dirname, '../.env'), 'utf8');
   for (const line of env.split('\n')) {
@@ -35,64 +37,356 @@ try {
   }
 } catch {}
 
-// ─── known meetings ───────────────────────────────────────────────────────────
-// Extend this list as new meetings are published on infocouncil.biz.
-// id format: {committee}-{DD}{MMM}{YYYY}
-// infocouncil URL pattern:
-//   agenda:  Open/{YYYY}/{MM}/LTF_{DDMMYYYY}_AGN_{ID}_AT.HTM
-//   minutes: Open/{YYYY}/{MM}/LTF_{DDMMYYYY}_MIN_{ID}.HTM
-const MEETINGS = [
-  {
-    id: 'ltf-18may2026',
-    committee_id: 'ltf',
-    date: '2026-05-18',
-    agendaId: '4285',
-    agendaUrl: 'https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM',
-    minutesUrl: 'https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM',
+// ─── committee config ─────────────────────────────────────────────────────────
+// site_id: the numeric value in infocouncil.biz's ddlCommittee dropdown
+// slug: used in meeting IDs and D1 committee.id
+// types: the item type vocabulary for this committee (used in Claude prompts)
+const COMMITTEES = {
+  '1':  {
+    slug: 'council',
+    name: 'Council',
+    types: 'motion | notice-of-motion | mayoral-minute | development | infrastructure | report | other',
+    typeHints: `
+  - motion = council resolution or formal motion
+  - notice-of-motion = councillor notice of motion
+  - mayoral-minute = mayoral minute
+  - development = development application or planning decision
+  - infrastructure = infrastructure, capital works, road or park project
+  - report = staff report or briefing
+  - other = anything else`,
   },
-  {
-    id: 'ltf-20apr2026',
-    committee_id: 'ltf',
-    date: '2026-04-20',
-    agendaId: '4284',
-    agendaUrl: 'https://innerwest.infocouncil.biz/Open/2026/04/LTF_20042026_AGN_4284_AT.HTM',
-    minutesUrl: 'https://innerwest.infocouncil.biz/Open/2026/04/LTF_20042026_MIN_4284.HTM',
+  '6':  {
+    slug: 'council-extra',
+    name: 'Extraordinary Council',
+    types: 'motion | notice-of-motion | report | other',
+    typeHints: `
+  - motion = formal resolution
+  - notice-of-motion = councillor notice of motion
+  - report = staff report or briefing
+  - other = anything else`,
   },
-  {
-    id: 'ltf-16mar2026',
-    committee_id: 'ltf',
-    date: '2026-03-16',
-    agendaId: '4283',
-    agendaUrl: 'https://innerwest.infocouncil.biz/Open/2026/03/LTF_16032026_AGN_4283_AT.HTM',
-    minutesUrl: 'https://innerwest.infocouncil.biz/Open/2026/03/LTF_16032026_MIN_4283.HTM',
+  '12': {
+    slug: 'ltf',
+    name: 'Local Transport Forum',
+    types: 'crossing | parking | latm | speed | event',
+    typeHints: `
+  - crossing = raised pedestrian crossing, roundabout, or pedestrian refuge
+  - parking = parking restrictions, resident parking zones, EV charging, no stopping
+  - latm = local area traffic management works (speed humps, kerb blisters, road closures, shared zones)
+  - speed = speed limit changes
+  - event = temporary road closure for a community event`,
   },
-  {
-    id: 'ltf-16feb2026',
-    committee_id: 'ltf',
-    date: '2026-02-16',
-    agendaId: '4282',
-    agendaUrl: 'https://innerwest.infocouncil.biz/Open/2026/02/LTF_16022026_AGN_4282_AT.HTM',
-    minutesUrl: 'https://innerwest.infocouncil.biz/Open/2026/02/LTF_16022026_MIN_4282.HTM',
+  '13': {
+    slug: 'lrac',
+    name: 'Local Representation Advisory Committee',
+    types: 'transport | planning | community | report | other',
+    typeHints: `
+  - transport = transport or traffic matter
+  - planning = planning or development matter
+  - community = community or cultural matter
+  - report = staff report or briefing
+  - other = anything else`,
   },
-];
+  '14': {
+    slug: 'lrac-leichhardt',
+    name: 'LRAC Leichhardt',
+    types: 'transport | planning | community | report | other',
+    typeHints: `
+  - transport = transport or traffic matter
+  - planning = planning or development matter
+  - community = community or cultural matter
+  - report = staff report or briefing
+  - other = anything else`,
+  },
+  '15': {
+    slug: 'lrac-ashfield',
+    name: 'LRAC Ashfield',
+    types: 'transport | planning | community | report | other',
+    typeHints: `
+  - transport = transport or traffic matter
+  - planning = planning or development matter
+  - community = community or cultural matter
+  - report = staff report or briefing
+  - other = anything else`,
+  },
+  '16': {
+    slug: 'lrac-marrickville',
+    name: 'LRAC Marrickville',
+    types: 'transport | planning | community | report | other',
+    typeHints: `
+  - transport = transport or traffic matter
+  - planning = planning or development matter
+  - community = community or cultural matter
+  - report = staff report or briefing
+  - other = anything else`,
+  },
+  '17': {
+    slug: 'iag',
+    name: 'Implementation Advisory Group',
+    types: 'project | report | other',
+    typeHints: `
+  - project = implementation of a specific project or program
+  - report = staff report or progress update
+  - other = anything else`,
+  },
+  '23': {
+    slug: 'fmac',
+    name: 'Flood Management Advisory Committee',
+    types: 'flood-study | infrastructure | policy | report | other',
+    typeHints: `
+  - flood-study = flood study, modelling, or risk assessment
+  - infrastructure = drainage, detention basin, or flood infrastructure
+  - policy = flood policy or development control guideline
+  - report = staff report or briefing
+  - other = anything else`,
+  },
+  '24': {
+    slug: 'ilpp',
+    name: 'Inner West Local Planning Panel',
+    types: 'development-application | planning-proposal | modification | rezoning | other',
+    typeHints: `
+  - development-application = DA determined by the panel
+  - planning-proposal = planning proposal or local environmental plan amendment
+  - modification = modification to an existing approval
+  - rezoning = rezoning application
+  - other = anything else`,
+  },
+  '29': {
+    slug: 'amsc',
+    name: 'Asset Management Steering Committee',
+    types: 'asset | report | other',
+    typeHints: `
+  - asset = asset management strategy or plan
+  - report = staff report or briefing
+  - other = anything else`,
+  },
+  '30': {
+    slug: 'wmwg',
+    name: 'Waste Management Working Group',
+    types: 'waste | report | other',
+    typeHints: `
+  - waste = waste management, recycling, or sustainability initiative
+  - report = staff report or briefing
+  - other = anything else`,
+  },
+  '31': {
+    slug: 'public-forum',
+    name: 'Public Forum',
+    // Public Forum publishes minutes only — no agenda docs.
+    // Minutes list community members who addressed council and what they raised.
+    minutesOnly: true,
+    types: 'community-address',
+    typeHints: `
+  - community-address = a resident or community member addressing council`,
+  },
+};
 
-// ─── fetch HTML ───────────────────────────────────────────────────────────────
+// Months with no LTF activity (they just don't meet — saves unnecessary scan noise)
+const LIKELY_NO_MEETING_MONTHS = {}; // empty — scan everything, let the site return nothing
+
+// ─── parse CLI args ───────────────────────────────────────────────────────────
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const opts = { months: 6, meetingId: null, committeeSlug: null };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--months' && args[i + 1]) opts.months = parseInt(args[++i], 10);
+    if (args[i] === '--meeting' && args[i + 1]) opts.meetingId = args[++i];
+    if (args[i] === '--committee' && args[i + 1]) opts.committeeSlug = args[++i];
+  }
+  return opts;
+}
+
+// ─── infocouncil: get fresh ViewState for form POSTs ─────────────────────────
+async function getViewstateData() {
+  const ua = 'InnerWestWatch/1.0 (council data digest; contact via github.com/leemcdougall/innerwestwatch)';
+  const resp = await fetch('https://innerwest.infocouncil.biz/', {
+    headers: { 'User-Agent': ua },
+  });
+  const cookies = resp.headers.getSetCookie().join('; ');
+  const html = await resp.text();
+  return {
+    vs:      html.split('id="__VIEWSTATE" value="')[1]?.split('"')[0] || '',
+    ev:      html.split('id="__EVENTVALIDATION" value="')[1]?.split('"')[0] || '',
+    vsg:     html.split('id="__VIEWSTATEGENERATOR" value="')[1]?.split('"')[0] || '',
+    cookies,
+    ua,
+  };
+}
+
+// ─── infocouncil: discover meetings for one committee + month ─────────────────
+// Returns array of raw meeting objects parsed from the site listing.
+async function fetchMeetingList(committeeId, year, month, vsd) {
+  const body = new URLSearchParams({
+    '__VIEWSTATE': vsd.vs,
+    '__VIEWSTATEGENERATOR': vsd.vsg,
+    '__EVENTVALIDATION': vsd.ev,
+    '__EVENTTARGET': '',
+    '__EVENTARGUMENT': '',
+    'ddlCommittee': String(committeeId),
+    'ddlYear': String(year),
+    'ddlMonth': String(month),
+    'hdnSortColumn': 'Date',
+    'hdnSortOrder': '1',
+    'btnView': 'View',
+  });
+
+  const resp = await fetch('https://innerwest.infocouncil.biz/', {
+    method: 'POST',
+    headers: {
+      'User-Agent': vsd.ua,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Referer': 'https://innerwest.infocouncil.biz/',
+      'Cookie': vsd.cookies,
+    },
+    body: body.toString(),
+  });
+
+  if (!resp.ok) throw new Error(`infocouncil listing returned HTTP ${resp.status}`);
+  const html = await resp.text();
+
+  // Links go through RedirectToDoc.aspx?URL=Open/YYYY/MM/FILENAME
+  // We want AGN (agenda) and MIN (minutes) files — skip ATT (attachments), EXCLUDED, PDFs
+  const agendaLinks = [...html.matchAll(
+    /RedirectToDoc\.aspx\?URL=(Open\/\d{4}\/\d{2}\/[^"]+_AGN_[^"]+_WEB\.htm)/gi
+  )].map(m => m[1]);
+
+  const minutesLinks = [...html.matchAll(
+    /RedirectToDoc\.aspx\?URL=(Open\/\d{4}\/\d{2}\/[^"]+_MIN_[^"]+_WEB\.htm)/gi
+  )].map(m => m[1]);
+
+  const committee = COMMITTEES[String(committeeId)];
+  const monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const meetings = [];
+  const unmatched = []; // links we saw but couldn't parse — surfaced as audit warnings
+
+  // Helper: parse a document path into meeting metadata
+  function parseMeetingFromPath(path, type) {
+    // type is 'AGN' or 'MIN'
+    const pattern = type === 'AGN'
+      ? /Open\/(\d{4})\/(\d{2})\/([A-Z0-9]+)_(\d{8})_AGN_(\d+)(_AT_EXTRA|_AT)?_WEB\.htm/i
+      : /Open\/(\d{4})\/(\d{2})\/([A-Z0-9]+)_(\d{8})_MIN_(\d+)(_EXTRA)?_WEB\.htm/i;
+    const m = path.match(pattern);
+    if (!m) return null;
+    const [, , , prefix, dateStr, docId, extraSuffix] = m;
+    const isExtra = /_EXTRA/i.test(path);
+    const day = dateStr.slice(0, 2);
+    const mon = dateStr.slice(2, 4);
+    const yr = dateStr.slice(4);
+    return {
+      prefix, dateStr, docId, isExtra,
+      date: `${yr}-${mon}-${day}`,
+      meetingId: `${committee.slug}-${day}${monthNames[parseInt(mon, 10) - 1]}${yr}${isExtra ? '-extra' : ''}`,
+      htmUrl: `https://innerwest.infocouncil.biz/${path.replace(/_WEB\.htm$/i, '.HTM')}`,
+    };
+  }
+
+  if (committee.minutesOnly) {
+    // For committees that publish minutes only (e.g. Public Forum),
+    // treat each minutes doc as a standalone meeting with no separate agenda.
+    for (const minPath of minutesLinks) {
+      const meta = parseMeetingFromPath(minPath, 'MIN');
+      if (!meta) { unmatched.push(minPath); continue; }
+      meetings.push({
+        id: meta.meetingId,
+        committee_id: committee.slug,
+        committee_site_id: committeeId,
+        date: meta.date,
+        agendaId: meta.docId,
+        agendaUrl: null,          // no agenda for minutes-only committees
+        minutesUrl: meta.htmUrl,
+        isExtra: meta.isExtra,
+        minutesOnly: true,
+      });
+    }
+  } else {
+    // Build a minutes lookup keyed by prefix_dateStr_docId
+    const minutesMap = new Map();
+    for (const link of minutesLinks) {
+      const meta = parseMeetingFromPath(link, 'MIN');
+      if (meta) minutesMap.set(`${meta.prefix}_${meta.dateStr}_${meta.docId}`, meta.htmUrl);
+    }
+
+    for (const agendaPath of agendaLinks) {
+      const meta = parseMeetingFromPath(agendaPath, 'AGN');
+      if (!meta) { unmatched.push(agendaPath); continue; }
+      const minutesUrl = minutesMap.get(`${meta.prefix}_${meta.dateStr}_${meta.docId}`) || null;
+      meetings.push({
+        id: meta.meetingId,
+        committee_id: committee.slug,
+        committee_site_id: committeeId,
+        date: meta.date,
+        agendaId: meta.docId,
+        agendaUrl: meta.htmUrl,
+        minutesUrl,
+        isExtra: meta.isExtra,
+        minutesOnly: false,
+      });
+    }
+  }
+
+  return { meetings, unmatched };
+}
+
+// ─── discover all meetings across committees for the past N months ─────────────
+async function discoverMeetings(monthsBack, committeeSlugFilter) {
+  console.log(`\ndiscovering meetings — last ${monthsBack} months across all committees...`);
+
+  const vsd = await getViewstateData();
+
+  const now = new Date();
+  const monthsToScan = [];
+  for (let i = 0; i < monthsBack; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthsToScan.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+  }
+
+  const committeeIds = Object.keys(COMMITTEES).filter(id => {
+    if (!committeeSlugFilter) return true;
+    return COMMITTEES[id].slug === committeeSlugFilter;
+  });
+
+  const allMeetings = [];
+  const unmatchedLinks = [];
+
+  for (const committeeId of committeeIds) {
+    const committee = COMMITTEES[committeeId];
+    let found = 0;
+    for (const { year, month } of monthsToScan) {
+      const { meetings, unmatched } = await fetchMeetingList(committeeId, year, month, vsd);
+      allMeetings.push(...meetings);
+      unmatchedLinks.push(...unmatched);
+      found += meetings.length;
+      await sleep(200);
+    }
+    if (found > 0) console.log(`  ${committee.name}: ${found} meetings`);
+  }
+
+  console.log(`  total discovered: ${allMeetings.length} meetings`);
+
+  // Audit: warn about unknown committees or unmatched document links.
+  // Runs on every invocation so the GitHub Actions log always reflects portal state.
+  await auditPortal(vsd, unmatchedLinks).catch(err =>
+    warn(`audit failed: ${err.message}`)
+  );
+
+  return allMeetings;
+}
+
+// ─── fetch HTML with retries ──────────────────────────────────────────────────
+const UA = 'InnerWestWatch/1.0 (council data digest; contact via github.com/leemcdougall/innerwestwatch)';
+
 async function fetchHtml(url, { retries = 3, timeoutMs = 120_000 } = {}) {
   let lastErr;
   for (let attempt = 1; attempt <= retries; attempt++) {
     if (attempt > 1) {
-      const wait = attempt * 5_000; // 10s, 15s between retries
+      const wait = attempt * 5_000;
       console.log(`  retry ${attempt}/${retries} in ${wait / 1000}s...`);
-      await new Promise(r => setTimeout(r, wait));
+      await sleep(wait);
     }
-    console.log(`  fetching ${url}`);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'InnerWestWatch/1.0 (council data digest; contact via github.com/leemcdougall/innerwestwatch)' },
-      });
+      const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': UA } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.text();
     } catch (err) {
@@ -105,141 +399,266 @@ async function fetchHtml(url, { retries = 3, timeoutMs = 120_000 } = {}) {
   throw new Error(`failed after ${retries} attempts: ${lastErr.message} — ${url}`);
 }
 
-// ─── split HTML into per-item sections ───────────────────────────────────────
-// infocouncil agenda and minutes both use the pattern:
-//   "LTF0526(1) Item N" at the start of each item section.
-// We split on that boundary and return one string per item.
-function splitIntoItems(html) {
-  // Strip HTML tags to get plain text for Claude — keeps content, loses markup noise
-  const text = html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/\s{3,}/g, '\n\n')
-    .trim();
+// ─── fetch an image as base64 ─────────────────────────────────────────────────
+// Returns null if the image is too large or fails to fetch.
+const MAX_IMAGE_BYTES = 1_500_000; // 1.5 MB — skip larger files
 
-  // Split on item boundaries — pattern: "LTF\d+\(\d+\) Item \d+"
-  // e.g. "LTF0526(1) Item 1", "LTF0526(1) Item 2"
-  const parts = text.split(/(?=LTF\d+\(\d+\)\s+Item\s+\d+)/i);
-
-  // Filter to actual item sections (skip preamble)
-  return parts
-    .filter(p => /LTF\d+\(\d+\)\s+Item\s+\d+/i.test(p))
-    .map(p => p.trim());
+async function fetchImageBase64(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': UA } });
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX_IMAGE_BYTES) return null;
+    const b64 = Buffer.from(buf).toString('base64');
+    const ct = res.headers.get('content-type') || '';
+    const mediaType = ct.includes('png') ? 'image/png'
+      : ct.includes('gif') ? 'image/gif'
+      : ct.includes('webp') ? 'image/webp'
+      : 'image/jpeg';
+    return { base64: b64, mediaType };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-// ─── extract item number from section text ────────────────────────────────────
+// ─── split raw HTML into per-item sections, collecting image URLs per section ──
+// Returns array of { text: string, imageUrls: string[] }
+// imageUrls are fully resolved against docUrl.
+//
+// Large council documents repeat item reference codes in the table of contents,
+// headers, and cross-references. We deduplicate by item number and keep only the
+// largest section per item number (which is the actual item content, not a TOC stub).
+const MAX_IMAGES_PER_ITEM = 6;
+
+function splitHtmlByItems(html, docUrl) {
+  // Pattern covers: LTF0526(1) Item 1, C0326(1) Item 2, ILPP0426(1) Item 3, etc.
+  const ITEM_BOUNDARY = /(?=[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+)/gi;
+  const base = docUrl.replace(/\/[^/]+\.HTM$/i, '/');
+
+  // Split raw HTML at every item boundary occurrence
+  const rawParts = html.split(ITEM_BOUNDARY).filter(p =>
+    /[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+/i.test(p)
+  );
+
+  // Group by item number — keep the longest section per item (the actual content, not TOC stubs)
+  const byItemNum = new Map();
+  for (const rawSection of rawParts) {
+    const m = rawSection.match(/[A-Z]+\d{4}\(\d+\)\s+Item\s+(\d+)/i);
+    if (!m) continue;
+    const itemNum = parseInt(m[1], 10);
+    const existing = byItemNum.get(itemNum);
+    if (!existing || rawSection.length > existing.length) {
+      byItemNum.set(itemNum, rawSection);
+    }
+  }
+
+  // Convert to sorted array of { text, imageUrls }
+  return [...byItemNum.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, rawSection]) => {
+      const imgSrcs = [...rawSection.matchAll(/<img[^>]+src="([^"]+)"/gi)]
+        .map(m => m[1])
+        .filter(src => !src.startsWith('data:') && !src.startsWith('http'));
+
+      const imageUrls = [...new Set(imgSrcs)]
+        .slice(0, MAX_IMAGES_PER_ITEM)
+        .map(src => `${base}${src}`);
+
+      const text = rawSection
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/\s{3,}/g, '\n\n')
+        .trim();
+
+      return { text, imageUrls };
+    });
+}
+
 function extractItemNumber(sectionText) {
-  const m = sectionText.match(/LTF\d+\(\d+\)\s+Item\s+(\d+)/i);
+  const m = sectionText.match(/[A-Z]+\d{4}\(\d+\)\s+Item\s+(\d+)/i);
   return m ? parseInt(m[1], 10) : null;
 }
 
-// ─── Claude API: extract structured data from agenda item ────────────────────
-// Sends all item sections in one call to minimise API round-trips.
-async function extractAgendaData(client, meetingId, itemSections) {
-  const itemsText = itemSections
-    .map((text, i) => `=== ITEM SECTION ${i + 1} ===\n${text.slice(0, 2000)}`)
-    .join('\n\n');
-
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: `You are extracting structured data from Inner West Council Local Transport Forum agenda items.
+// ─── build Claude extraction prompt for agenda items ─────────────────────────
+function buildAgendaPrompt(committeeId) {
+  const committee = COMMITTEES[committeeId];
+  return `You are extracting structured data from Inner West Council ${committee.name} agenda items.
 
 For each item section below, extract:
 - item_number: the integer from "Item N" in the heading
-- type: one of exactly: crossing, parking, latm, speed, event
-  - crossing = raised pedestrian crossing or roundabout
-  - parking = parking restrictions, resident parking, EV charging, no stopping/parking zones
-  - latm = local area traffic management works (road closures, kerb blisters, humps, etc.)
-  - speed = speed limit changes
-  - event = temporary road closures for an event
-- headline: a plain-language summary in 10 words or fewer, written for a resident (not bureaucratic). Lead with what's changing. E.g. "New raised crossing — Darling St at Curtis Rd"
-- suburbs: array of suburb names mentioned as affected locations
-- streets: array of street names mentioned as affected locations (e.g. "Illawarra Rd", "Wharf St")
+- type: one of exactly: ${committee.types}${committee.typeHints}
+- headline: a plain-language summary in 12 words or fewer, written for a resident (not bureaucratic). Lead with what's changing or being decided. Include street name if one is mentioned. E.g. "New raised crossing — Darling St at Curtis Rd" or "DA approved — 42 Smith St, Marrickville"
+- suburbs: array of suburb names mentioned as affected locations (empty array if none)
+- streets: array of street names mentioned as affected locations, e.g. "Illawarra Rd", "Wharf St" (empty array if none)
+- key_image_indices: array of 0-based indices into the images for this item that are genuinely informative (traffic diagrams, site maps, engineering drawings) — exclude logos, headers, photos of unrelated locations. Empty array if no informative images.
+
+Images appear in the content blocks after each item's text. Use them to identify specific street locations, understand the scope of works, and improve the headline.
 
 Return a JSON array, one object per item, in item number order. No commentary, just the JSON array.
-
-Example output:
-[
-  {
-    "item_number": 1,
-    "type": "crossing",
-    "headline": "New raised crossing and roundabout — Darling St at Curtis Rd",
-    "suburbs": ["Balmain"],
-    "streets": ["Darling St", "Curtis Rd"]
-  }
-]
-
-ITEM SECTIONS:
-${itemsText}`,
-      },
-    ],
-  });
-
-  const raw = response.content[0].text.trim();
-  // Extract JSON array from response (Claude may wrap in markdown code block)
-  const jsonMatch = raw.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error(`Claude returned no JSON array for agenda extraction:\n${raw}`);
-  return JSON.parse(jsonMatch[0]);
-}
-
-// ─── Claude API: extract resolution data from minutes item ───────────────────
-async function extractMinutesData(client, itemSections) {
-  const itemsText = itemSections
-    .map((text, i) => `=== ITEM SECTION ${i + 1} ===\n${text.slice(0, 2000)}`)
-    .join('\n\n');
-
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: `You are extracting resolution outcomes from Inner West Council Local Transport Forum minutes.
-
-For each item section below, extract:
-- item_number: the integer from "Item N" in the heading
-- status: one of exactly:
-  - forum-yes        = approved without changes
-  - forum-amended    = approved with amendments, or approved in principle (returns to Forum)
-  - forum-no         = not supported / deferred indefinitely
-- resolution: a plain-language one-sentence summary of what was decided, written for a resident. Include key details like street name, what specifically was approved or rejected, and any important conditions. E.g. "Approved — raised pedestrian crossing at Illawarra Rd/Wharf St to proceed."
-- works_start: ISO 8601 date (YYYY-MM-DD) if a specific construction start date is mentioned, otherwise null
-
-Return a JSON array, one object per item, in item number order. No commentary, just JSON.
 
 Example:
 [
   {
     "item_number": 1,
-    "status": "forum-yes",
-    "resolution": "Approved — raised pedestrian crossing and roundabout at Darling St/Curtis Rd to proceed, coordinated with bus operator Transit Systems.",
-    "works_start": null
+    "type": "crossing",
+    "headline": "New raised crossing — Darling St at Curtis Rd",
+    "suburbs": ["Balmain"],
+    "streets": ["Darling St", "Curtis Rd"],
+    "key_image_indices": [0, 2]
   }
-]
-
-ITEM SECTIONS:
-${itemsText}`,
-      },
-    ],
-  });
-
-  const raw = response.content[0].text.trim();
-  const jsonMatch = raw.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error(`Claude returned no JSON array for minutes extraction:\n${raw}`);
-  return JSON.parse(jsonMatch[0]);
+]`;
 }
 
-// ─── D1 query via Cloudflare REST API ─────────────────────────────────────────
+// ─── build Claude extraction prompt for minutes resolutions ───────────────────
+function buildMinutesPrompt(committeeId) {
+  const committee = COMMITTEES[committeeId];
+  const isLtf = committee.slug === 'ltf';
+  const statuses = isLtf
+    ? 'forum-yes | forum-amended | forum-no'
+    : 'approved | approved-amended | not-supported | deferred | noted';
+  const statusHints = isLtf
+    ? `
+  - forum-yes = approved without changes
+  - forum-amended = approved with amendments or in principle (returns to Forum)
+  - forum-no = not supported or deferred indefinitely`
+    : `
+  - approved = approved without changes
+  - approved-amended = approved with amendments or conditions
+  - not-supported = rejected or not supported
+  - deferred = deferred to a future meeting
+  - noted = noted or received (no vote required)`;
+
+  return `You are extracting resolution outcomes from Inner West Council ${committee.name} minutes.
+
+For each item section below, extract:
+- item_number: the integer from "Item N" in the heading
+- status: one of exactly: ${statuses}${statusHints}
+- resolution: a plain-language one-sentence summary of what was decided, written for a resident. Include key details — what specifically was approved, rejected, or noted, any important conditions or amendments. E.g. "Approved — raised pedestrian crossing at Illawarra Rd/Wharf St to proceed."
+- works_start: ISO 8601 date (YYYY-MM-DD) if a specific construction or implementation start date is mentioned, otherwise null
+
+Return a JSON array, one object per item, in item number order. No commentary, just JSON.`;
+}
+
+// ─── Claude API: extract structured data from agenda items (with images) ──────
+// Batches items so no single API call exceeds Claude's 100-image limit.
+const MAX_IMAGES_PER_CALL = 80; // leave headroom under Claude's 100-image limit
+
+async function extractAgendaData(client, committeeId, itemSections) {
+  // Fetch all images in parallel first
+  if (itemSections.some(s => s.imageUrls.length > 0)) {
+    console.log('  fetching item images...');
+  }
+  const sectionsWithImages = await Promise.all(
+    itemSections.map(async section => {
+      const fetchedImages = await Promise.all(
+        section.imageUrls.map(url => fetchImageBase64(url).catch(() => null))
+      );
+      return { ...section, fetchedImages: fetchedImages.filter(Boolean) };
+    })
+  );
+
+  const totalImages = sectionsWithImages.reduce((n, s) => n + s.fetchedImages.length, 0);
+  if (totalImages > 0) console.log(`  loaded ${totalImages} images for vision`);
+
+  // Batch items so total images per call stays under the limit
+  const batches = [];
+  let current = [], currentImgCount = 0;
+  for (const section of sectionsWithImages) {
+    const imgCount = section.fetchedImages.length;
+    if (current.length > 0 && currentImgCount + imgCount > MAX_IMAGES_PER_CALL) {
+      batches.push(current);
+      current = [];
+      currentImgCount = 0;
+    }
+    current.push(section);
+    currentImgCount += imgCount;
+  }
+  if (current.length > 0) batches.push(current);
+
+  const allExtracted = [];
+  for (let b = 0; b < batches.length; b++) {
+    const batch = batches[b];
+    if (batches.length > 1) console.log(`  batch ${b + 1}/${batches.length} (${batch.length} items)`);
+
+    // Build content: prompt + interleaved text/images per item
+    const content = [{ type: 'text', text: buildAgendaPrompt(committeeId) + '\n\nITEM SECTIONS:\n' }];
+    for (let i = 0; i < batch.length; i++) {
+      const { text, fetchedImages } = batch[i];
+      content.push({ type: 'text', text: `\n=== ITEM SECTION ${i + 1} ===\n${text.slice(0, 3000)}` });
+      for (const img of fetchedImages) {
+        content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
+      }
+    }
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content }],
+    });
+
+    const raw = response.content[0].text.trim();
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error(`Claude returned no JSON array (batch ${b + 1}):\n${raw.slice(0, 300)}`);
+    allExtracted.push(...JSON.parse(jsonMatch[0]));
+  }
+
+  // Attach resolved image URLs using key_image_indices
+  for (const item of allExtracted) {
+    const section = sectionsWithImages.find(s => extractItemNumber(s.text) === item.item_number);
+    if (section) {
+      item.keyImageUrls = (item.key_image_indices || [])
+        .map(idx => section.imageUrls[idx])
+        .filter(Boolean);
+    }
+    delete item.key_image_indices;
+  }
+
+  return allExtracted;
+}
+
+// ─── Claude API: extract resolution data from minutes ────────────────────────
+// Batches items in groups of 20 so large Council minutes don't hit token limits.
+const MINUTES_BATCH_SIZE = 20;
+
+async function extractMinutesData(client, committeeId, itemSections) {
+  const allExtracted = [];
+
+  for (let i = 0; i < itemSections.length; i += MINUTES_BATCH_SIZE) {
+    const batch = itemSections.slice(i, i + MINUTES_BATCH_SIZE);
+    const batchNum = Math.floor(i / MINUTES_BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(itemSections.length / MINUTES_BATCH_SIZE);
+    if (totalBatches > 1) console.log(`  minutes batch ${batchNum}/${totalBatches}`);
+
+    const itemsText = batch
+      .map((s, j) => `=== ITEM SECTION ${i + j + 1} ===\n${s.text.slice(0, 2000)}`)
+      .join('\n\n');
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 8192,
+      messages: [{ role: 'user', content: `${buildMinutesPrompt(committeeId)}\n\nITEM SECTIONS:\n${itemsText}` }],
+    });
+
+    const raw = response.content[0].text.trim();
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error(`Claude returned no JSON array for minutes batch ${batchNum}:\n${raw.slice(0, 300)}`);
+    allExtracted.push(...JSON.parse(jsonMatch[0]));
+  }
+
+  return allExtracted;
+}
+
+// ─── D1 REST API ──────────────────────────────────────────────────────────────
 async function d1Query(sql, params = []) {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const databaseId = process.env.CLOUDFLARE_DATABASE_ID;
@@ -249,200 +668,316 @@ async function d1Query(sql, params = []) {
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`,
     {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql, params }),
     }
   );
 
   const data = await res.json();
-  if (!data.success) {
-    throw new Error(`D1 query failed: ${JSON.stringify(data.errors)}\nSQL: ${sql}`);
-  }
+  if (!data.success) throw new Error(`D1 query failed: ${JSON.stringify(data.errors)}\nSQL: ${sql}`);
   return data.result;
+}
+
+// ─── ensure schema has the images table ───────────────────────────────────────
+async function ensureSchema() {
+  await d1Query(`
+    CREATE TABLE IF NOT EXISTS images (
+      id          TEXT PRIMARY KEY,
+      topic_id    TEXT NOT NULL,
+      url         TEXT NOT NULL,
+      description TEXT,
+      sequence    INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+}
+
+// ─── get set of meeting IDs already in D1 ────────────────────────────────────
+async function getIngestedMeetingIds() {
+  const result = await d1Query('SELECT id FROM meetings');
+  const rows = result[0]?.results || [];
+  return new Set(rows.map(r => r.id));
+}
+
+// ─── normalise status for non-LTF committees ──────────────────────────────────
+function normaliseStatus(rawStatus, committeeId) {
+  const ltf = COMMITTEES[committeeId]?.slug === 'ltf';
+  if (ltf) return rawStatus; // already correct
+  // Map generic statuses to the topics.status CHECK constraint values
+  const map = {
+    'approved':          'forum-yes',
+    'approved-amended':  'forum-amended',
+    'not-supported':     'forum-no',
+    'deferred':          'forum-no',
+    'noted':             'on-agenda',
+    'on-agenda':         'on-agenda',
+    'forum-yes':         'forum-yes',
+    'forum-amended':     'forum-amended',
+    'forum-no':          'forum-no',
+  };
+  return map[rawStatus] || 'on-agenda';
 }
 
 // ─── write a meeting and its items to D1 ─────────────────────────────────────
 async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPublished) {
   const mid = meeting.id;
   const now = new Date().toISOString();
-
-  // Build a map of item_number → minutes data for fast lookup
   const minutesMap = {};
   for (const m of minutesItems) minutesMap[m.item_number] = m;
 
-  const statements = [];
+  // Collect all statements to execute sequentially
+  const stmts = [];
 
-  // Committee (INSERT OR IGNORE — safe to re-run)
-  statements.push({
+  // Committee (INSERT OR IGNORE — idempotent)
+  stmts.push({
     sql: `INSERT OR IGNORE INTO committees (id, name) VALUES (?, ?)`,
-    params: [meeting.committee_id, 'Local Transport Forum'],
+    params: [meeting.committee_id, COMMITTEES[meeting.committee_site_id]?.name || meeting.committee_id],
   });
 
   // Meeting
-  statements.push({
+  stmts.push({
     sql: `INSERT OR REPLACE INTO meetings (id, committee_id, date, agenda_url, minutes_url, minutes_published)
           VALUES (?, ?, ?, ?, ?, ?)`,
-    params: [
-      mid,
-      meeting.committee_id,
-      meeting.date,
-      meeting.agendaUrl,
-      minutesPublished ? meeting.minutesUrl : null,
-      minutesPublished ? 1 : 0,
-    ],
+    params: [mid, meeting.committee_id, meeting.date, meeting.agendaUrl,
+             minutesPublished ? meeting.minutesUrl : null, minutesPublished ? 1 : 0],
   });
 
-  // Agenda document
-  statements.push({
-    sql: `INSERT OR REPLACE INTO documents (id, meeting_id, type, url, fetched_at)
-          VALUES (?, ?, 'agenda-html', ?, ?)`,
-    params: [`doc-agn-${meeting.agendaId}`, mid, meeting.agendaUrl, now],
-  });
+  // Primary document (agenda for standard meetings; minutes for minutes-only committees)
+  if (meeting.agendaUrl) {
+    stmts.push({
+      sql: `INSERT OR REPLACE INTO documents (id, meeting_id, type, url, fetched_at) VALUES (?, ?, 'agenda-html', ?, ?)`,
+      params: [`doc-agn-${meeting.agendaId}`, mid, meeting.agendaUrl, now],
+    });
+  }
 
-  // Minutes document (if published)
   if (minutesPublished) {
-    statements.push({
-      sql: `INSERT OR REPLACE INTO documents (id, meeting_id, type, url, fetched_at)
-            VALUES (?, ?, 'minutes-html', ?, ?)`,
+    stmts.push({
+      sql: `INSERT OR REPLACE INTO documents (id, meeting_id, type, url, fetched_at) VALUES (?, ?, 'minutes-html', ?, ?)`,
       params: [`doc-min-${meeting.agendaId}`, mid, meeting.minutesUrl, now],
     });
   }
 
-  // Topics and decisions
+  // Topics, decisions, and images
   for (const item of agendaItems) {
     const n = item.item_number;
     const topicId = `topic-${mid}-${String(n).padStart(2, '0')}`;
     const decisionId = `${mid}-${String(n).padStart(2, '0')}`;
     const mins = minutesMap[n];
-    const status = mins ? mins.status : 'on-agenda';
+    const rawStatus = mins ? mins.status : 'on-agenda';
+    const status = normaliseStatus(rawStatus, meeting.committee_site_id);
     const resolution = mins ? mins.resolution : null;
     const worksStart = mins ? mins.works_start : null;
 
-    statements.push({
+    stmts.push({
       sql: `INSERT OR REPLACE INTO topics (id, type, headline, status, suburbs, streets)
             VALUES (?, ?, ?, ?, ?, ?)`,
-      params: [
-        topicId,
-        item.type,
-        item.headline,
-        status,
-        JSON.stringify(item.suburbs || []),
-        JSON.stringify(item.streets || []),
-      ],
+      params: [topicId, item.type, item.headline, status,
+               JSON.stringify(item.suburbs || []), JSON.stringify(item.streets || [])],
     });
 
-    statements.push({
+    stmts.push({
       sql: `INSERT OR REPLACE INTO decisions (id, meeting_id, topic_id, item_number, resolution, works_start)
             VALUES (?, ?, ?, ?, ?, ?)`,
       params: [decisionId, mid, topicId, n, resolution, worksStart || null],
     });
-  }
 
-  // Execute all statements
-  // D1 REST API supports batch queries — send in chunks of 10 to stay under limits
-  const CHUNK = 10;
-  for (let i = 0; i < statements.length; i += CHUNK) {
-    const chunk = statements.slice(i, i + CHUNK);
-    // Execute sequentially within each chunk
-    for (const { sql, params } of chunk) {
-      await d1Query(sql, params);
+    // Store key images for this item
+    const keyImages = item.keyImageUrls || [];
+    for (let seq = 0; seq < keyImages.length; seq++) {
+      stmts.push({
+        sql: `INSERT OR REPLACE INTO images (id, topic_id, url, sequence) VALUES (?, ?, ?, ?)`,
+        params: [`img-${topicId}-${String(seq).padStart(3, '0')}`, topicId, keyImages[seq], seq],
+      });
     }
   }
 
-  console.log(`  wrote ${agendaItems.length} topics + decisions to D1`);
-}
-
-// ─── purge all data ───────────────────────────────────────────────────────────
-async function purgeAll() {
-  console.log('purging existing data...');
-  // Order matters — foreign key constraints (decisions → topics/meetings, etc.)
-  for (const table of ['documents', 'decisions', 'topics', 'meetings', 'committees']) {
-    await d1Query(`DELETE FROM ${table}`);
-    console.log(`  cleared ${table}`);
+  // Execute all statements (sequentially — D1 REST doesn't support true transactions)
+  for (const { sql, params } of stmts) {
+    await d1Query(sql, params);
   }
+
+  const imageCount = agendaItems.reduce((n, it) => n + (it.keyImageUrls?.length || 0), 0);
+  console.log(`  wrote ${agendaItems.length} topics + decisions, ${imageCount} images to D1`);
 }
 
 // ─── process one meeting ──────────────────────────────────────────────────────
 async function processMeeting(meeting, client) {
-  console.log(`\nprocessing ${meeting.id} (${meeting.date})`);
+  const committeeName = COMMITTEES[meeting.committee_site_id]?.name || meeting.committee_id;
+  console.log(`\nprocessing ${meeting.id} (${meeting.date}, ${committeeName})`);
 
-  // Fetch agenda
+  // ── minutes-only committees (e.g. Public Forum): no agenda doc ──
+  if (meeting.minutesOnly) {
+    let minutesHtml;
+    try {
+      console.log(`  fetching minutes (primary source): ${meeting.minutesUrl}`);
+      minutesHtml = await fetchHtml(meeting.minutesUrl);
+    } catch (err) {
+      console.error(`  ERROR fetching minutes: ${err.message} — skipping`);
+      return;
+    }
+
+    const sections = splitHtmlByItems(minutesHtml, meeting.minutesUrl);
+    console.log(`  found ${sections.length} item sections`);
+    if (sections.length === 0) {
+      // Public Forum minutes may not follow the standard Item N pattern —
+      // treat the whole document as a single item
+      const stripped = minutesHtml
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ').replace(/\s{3,}/g, '\n\n').trim();
+      sections.push({ text: stripped, imageUrls: [] });
+    }
+
+    console.log('  extracting items with Claude...');
+    const items = await extractAgendaData(client, meeting.committee_site_id, sections);
+    console.log(`  extracted ${items.length} items`);
+
+    // For minutes-only, every item is already resolved — mark as noted
+    for (const item of items) {
+      if (!item.status) item.status = 'on-agenda';
+    }
+
+    await writeMeetingToD1(meeting, items, [], true);
+    return;
+  }
+
+  // ── standard agenda + optional minutes ──
   let agendaHtml;
   try {
+    console.log(`  fetching agenda: ${meeting.agendaUrl}`);
     agendaHtml = await fetchHtml(meeting.agendaUrl);
   } catch (err) {
     console.error(`  ERROR fetching agenda: ${err.message} — skipping`);
     return;
   }
 
-  const agendaSections = splitIntoItems(agendaHtml);
-  console.log(`  found ${agendaSections.length} item sections in agenda`);
-  if (agendaSections.length === 0) {
+  const itemSections = splitHtmlByItems(agendaHtml, meeting.agendaUrl);
+  console.log(`  found ${itemSections.length} item sections`);
+  if (itemSections.length === 0) {
     console.error('  no items found — check HTML structure');
     return;
   }
 
-  // Extract structured data from agenda via Claude
   console.log('  extracting agenda data with Claude...');
-  const agendaItems = await extractAgendaData(client, meeting.id, agendaSections);
+  const agendaItems = await extractAgendaData(client, meeting.committee_site_id, itemSections);
   console.log(`  extracted ${agendaItems.length} items`);
 
-  // Fetch minutes (may not exist yet)
   let minutesItems = [];
   let minutesPublished = false;
-  try {
-    const minutesHtml = await fetchHtml(meeting.minutesUrl);
-    const minutesSections = splitIntoItems(minutesHtml);
-    if (minutesSections.length > 0) {
-      console.log('  extracting minutes data with Claude...');
-      minutesItems = await extractMinutesData(client, minutesSections);
-      minutesPublished = true;
-      console.log(`  extracted ${minutesItems.length} resolutions`);
+  if (meeting.minutesUrl) {
+    try {
+      console.log(`  fetching minutes: ${meeting.minutesUrl}`);
+      const minutesHtml = await fetchHtml(meeting.minutesUrl);
+      const minutesSections = splitHtmlByItems(minutesHtml, meeting.minutesUrl);
+      if (minutesSections.length > 0) {
+        console.log('  extracting minutes data with Claude...');
+        minutesItems = await extractMinutesData(client, meeting.committee_site_id, minutesSections);
+        minutesPublished = true;
+        console.log(`  extracted ${minutesItems.length} resolutions`);
+      }
+    } catch (err) {
+      console.log(`  minutes not available (${err.message}) — items will be on-agenda`);
     }
-  } catch (err) {
-    console.log(`  minutes not available (${err.message}) — items will be on-agenda`);
   }
 
-  // Write to D1
   await writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPublished);
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// Emit a warning that shows up as a highlighted annotation in GitHub Actions.
+// Outside CI it just prints to stderr.
+function warn(message) {
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`::warning::${message}`);
+  } else {
+    console.warn(`WARNING: ${message}`);
+  }
+}
+
+// ─── audit: check for unknown committees or unmatched document links ──────────
+// Fetches the live infocouncil.biz committee dropdown and warns about any IDs
+// not in our COMMITTEES config, and any document links that couldn't be parsed.
+// Called once per run so a human checking the Actions log will see any gaps.
+async function auditPortal(vsd, unmatchedLinks) {
+  // Check committee dropdown against our config
+  const resp = await fetch('https://innerwest.infocouncil.biz/', {
+    headers: { 'User-Agent': vsd.ua },
+  });
+  const html = await resp.text();
+
+  const commIdx = html.indexOf('ddlCommittee');
+  const yearIdx = html.indexOf('ddlYear');
+  if (commIdx >= 0 && yearIdx > commIdx) {
+    const section = html.slice(commIdx, yearIdx);
+    const options = [...section.matchAll(/<option[^>]+value="(\d+)"[^>]*>([^<]+)<\/option>/g)];
+    for (const [, id, name] of options) {
+      if (id === '0') continue; // [All] option
+      if (!COMMITTEES[id]) {
+        warn(`Unknown committee on infocouncil.biz — id=${id} name="${name.trim()}" — add it to COMMITTEES in db/ingest.js`);
+      }
+    }
+  }
+
+  // Warn about document links that couldn't be parsed
+  for (const link of unmatchedLinks) {
+    warn(`Unmatched document link (pattern may have changed): ${link}`);
+  }
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 async function main() {
-  // Validate env
   const required = ['ANTHROPIC_API_KEY', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_DATABASE_ID', 'CLOUDFLARE_D1_TOKEN'];
   const missing = required.filter(k => !process.env[k]);
   if (missing.length) {
     console.error(`Missing required env vars: ${missing.join(', ')}`);
-    console.error('Add them to a .env file or set them in the environment.');
     process.exit(1);
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const opts = parseArgs();
 
-  // Determine which meetings to process
-  const targetId = process.argv[2];
-  const meetings = targetId
-    ? MEETINGS.filter(m => m.id === targetId)
-    : MEETINGS;
+  // Ensure D1 schema is up to date (adds images table if missing)
+  await ensureSchema();
 
-  if (meetings.length === 0) {
-    console.error(`No meeting found with id: ${targetId}`);
-    console.error(`Known meetings: ${MEETINGS.map(m => m.id).join(', ')}`);
-    process.exit(1);
+  // ── single-meeting mode ──
+  if (opts.meetingId) {
+    // Discover the specific meeting by scanning all committees
+    const allMeetings = await discoverMeetings(opts.months, null);
+    const target = allMeetings.find(m => m.id === opts.meetingId);
+    if (!target) {
+      console.error(`Meeting "${opts.meetingId}" not found in the last ${opts.months} months`);
+      console.error('Try --months 12 to scan further back, or check the meeting ID');
+      process.exit(1);
+    }
+    await processMeeting(target, client);
+    console.log('\ndone.');
+    return;
   }
 
-  // Purge existing data before full re-ingest
-  // Skip purge when processing a single meeting (incremental update)
-  if (!targetId) {
-    await purgeAll();
+  // ── full scan mode ──
+  const discovered = await discoverMeetings(opts.months, opts.committeeSlug);
+  const alreadyIngested = await getIngestedMeetingIds();
+
+  const toProcess = discovered.filter(m => !alreadyIngested.has(m.id));
+  const skipped = discovered.length - toProcess.length;
+
+  console.log(`\n${toProcess.length} new meetings to ingest (${skipped} already in D1)`);
+  if (toProcess.length === 0) {
+    console.log('nothing to do.');
+    return;
   }
 
-  for (const meeting of meetings) {
+  // Process newest first so D1 has the most current data quickly
+  toProcess.sort((a, b) => b.date.localeCompare(a.date));
+
+  for (const meeting of toProcess) {
     await processMeeting(meeting, client);
+    // Polite delay between meetings to avoid hammering either server
+    await sleep(1000);
   }
 
   console.log('\ndone.');

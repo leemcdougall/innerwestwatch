@@ -1,24 +1,25 @@
-name: Ingest council data
+name: Ingest council meetings
 
 on:
-  # Run every Monday at 9am Sydney time (23:00 UTC Sunday)
-  # LTF meetings are typically on the third Monday of each month;
-  # minutes are published within a week or two after the meeting.
   schedule:
+    # Every Monday at 9am AEST (11pm Sunday UTC).
+    # LTF minutes are usually published within a week of the meeting,
+    # so weekly is enough to catch new meetings and newly published minutes.
     - cron: '0 23 * * 0'
-
-  # Allow manual trigger from the GitHub Actions tab
   workflow_dispatch:
     inputs:
-      meeting_id:
-        description: 'Specific meeting ID to process (leave blank for all)'
+      months:
+        description: 'How many months back to scan (default: 6)'
         required: false
-        type: string
+        default: '6'
+      committee:
+        description: 'Restrict to one committee slug (e.g. ltf, council) — leave blank for all'
+        required: false
+        default: ''
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -30,15 +31,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run ingestion pipeline
+      - name: Run ingest
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_DATABASE_ID: ${{ secrets.CLOUDFLARE_DATABASE_ID }}
           CLOUDFLARE_D1_TOKEN: ${{ secrets.CLOUDFLARE_D1_TOKEN }}
+          GITHUB_ACTIONS: 'true'
         run: |
-          if [ -n "${{ inputs.meeting_id }}" ]; then
-            node db/ingest.js "${{ inputs.meeting_id }}"
-          else
-            node db/ingest.js
+          MONTHS="${{ github.event.inputs.months || '6' }}"
+          COMMITTEE="${{ github.event.inputs.committee }}"
+          ARGS="--months $MONTHS"
+          if [ -n "$COMMITTEE" ]; then
+            ARGS="$ARGS --committee $COMMITTEE"
           fi
+          node db/ingest.js $ARGS
