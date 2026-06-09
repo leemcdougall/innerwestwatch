@@ -62,26 +62,23 @@ Modules are independent. Each can be built and shipped without the others being 
 - Schema redesigned 2026-06-08: `agenda_items` → `decisions`; suburb/street junction tables replaced with JSON arrays on `topics`; agenda/minutes URLs moved to `meetings`
 - `CONTEXT.md` — canonical term definitions
 
-### 1. Pipeline — automated ingestion ⏳ IN PROGRESS
+### 1. Pipeline — automated ingestion ✅ DONE (2026-06-09)
 
 *Fetches HTML from infocouncil.biz, extracts structured data with Claude API, writes to D1.*
 
-- `db/ingest.js` — written, not yet tested end-to-end
-- GitHub Actions workflow — written (`.github/workflows/ingest.yml`), runs Mondays 9am Sydney
-- **Blocked on:** Anthropic API key, Cloudflare D1 API token, `.env` file, GitHub secrets
+- `db/ingest.js` — full rewrite, auto-discovery scanner across all committees
+- Vision-enabled: fetches images, sends to Claude vision, stores descriptions in `images` table
+- GitHub Actions workflow runs Mondays 9am Sydney; manual dispatch with `--months` and `--committee`
+- 357 decisions ingested across 23 meetings, 170 images (Aug 2025 – Jun 2026)
 
-Next 4 steps to unblock:
-1. Create Anthropic API key at console.anthropic.com (add $5 credit)
-2. Create Cloudflare API token with D1 write permission (dash.cloudflare.com/profile/api-tokens)
-3. Create `.env` file at repo root with all four credentials
-4. Test: `node db/ingest.js ltf-18may2026` — verify one meeting ingests correctly, then run all four
+### 2. Scanner — detect new meetings automatically ✅ DONE (2026-06-09)
 
-### 2. Scanner — detect new meetings automatically
-*Extends the pipeline to check infocouncil.biz for new or updated documents.*
+*Built into the pipeline — ingest.js auto-discovers all meetings on infocouncil.biz.*
 
-- Check portal for new meetings not yet in D1
-- Re-check known meetings for newly published minutes
-- Run on GitHub Actions schedule — no manual triggering needed
+- POSTs to portal to discover meetings by committee/year/month
+- Skips already-ingested meetings (incremental)
+- Self-auditing: GitHub Actions warnings when unknown committees or document types appear
+- Runs on schedule weekly; new meeting `ltf-15jun2026` auto-discovered during first run
 
 ### 3. Frontend — resident-facing site
 *What residents actually see.*
@@ -115,11 +112,11 @@ Next 4 steps to unblock:
 | # | Milestone | Status | Depends on |
 |---|---|---|---|
 | 1 | D1 schema defined, items.json migrated, frontend reads from Worker | ✅ Done 2026-06-08 | — |
-| 2 | Scanner running on schedule, new Documents detected | — | Milestone 1 |
-| 3 | Ingestion producing AgendaItems from LTF agendas | — | Milestone 2 |
-| 4 | Topic linking working for LTF items | — | Milestone 3 |
+| 2 | Scanner running on schedule, new Documents detected | ✅ Done 2026-06-09 | Milestone 1 |
+| 3 | Ingestion producing decisions from LTF agendas | ✅ Done 2026-06-09 | Milestone 2 |
+| 4 | Topic linking working — connect decisions across meetings | — | Milestone 3 |
 | 5 | Backfill of open Topics complete | — | Milestone 4 |
-| 6 | Additional committee types added (Council, FMACC, etc.) | — | Milestone 3 |
+| 6 | Additional committee types added (Council, FMACC, etc.) | ✅ Done 2026-06-09 | Milestone 3 |
 | 7 | Document tools (image conversion, PDF extraction) | — | Milestone 3 |
 | 8 | Custom domain | — | Any time |
 

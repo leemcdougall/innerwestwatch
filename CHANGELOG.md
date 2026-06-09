@@ -4,6 +4,61 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-09 — Ingest pipeline: full portal scan, vision, all committees (Milestones 2, 3, 6)
+
+### What changed
+
+**`db/ingest.js` — complete rewrite**
+- Was: hardcoded 4-meeting LTF list, no images, LTF-only item splitting
+- Now: auto-discovery scanner across all committees on infocouncil.biz
+- POSTs to infocouncil.biz with ViewState to discover meetings by committee/year/month
+- Converts `_WEB.htm` stub links to `_AT.HTM` content pages automatically
+- Generalised item splitting works for any committee code, not just LTF
+- Groups duplicate item refs by item number, keeps largest section (eliminates TOC stubs)
+- Images: extracts `<img>` URLs per item, fetches as base64, sends to Claude vision
+- Batching: max 80 images per Claude call; minutes batched at 20 items/call
+- Large agendas (Council has 50+ items, 100+ images) handled correctly
+- Minutes-only committees (Public Forum) handled as special case
+- Self-auditing: warns via GitHub Actions `::warning::` annotations when new/unknown committees appear
+- Incremental: skips already-ingested meetings
+- 6th table added: `images` (id, topic_id, url, description, sequence) — auto-migrated on run
+
+**New committees in config**
+- Council, Local Transport Forum, Flood Management, Public Forum
+- LRAC Leichhardt (ID 14), Implementation Advisory Group (ID 17) added after audit warnings
+- 12 committees total in COMMITTEES config
+
+**GitHub Actions workflow (`.github/workflows/ingest.yml`)**
+- `--months` and `--committee` inputs for manual dispatch
+- `GITHUB_ACTIONS: 'true'` env var triggers `::warning::` annotations on unknown docs
+
+**Full data ingest run completed**
+- D1 now contains 357 decisions across 23 meetings, 170 images
+- Span: Aug 2025 – Jun 2026 (LTF); Dec 2025 – Jun 2026 (Council/FMAC)
+- Auto-discovered brand new meeting `ltf-15jun2026` (June 15, 2026) during run
+
+### D1 state after this session
+
+| Committee | Meetings | Items |
+|-----------|----------|-------|
+| Council | 8 | 250 |
+| Local Transport Forum | 9 | 98 |
+| Flood Management | 2 | 7 |
+| Public Forum | 2 | 2 |
+| **Total** | **23** | **357** |
+
+### Issues closed
+
+- #9 and #12 closed (pipeline complete and data ingested)
+- PR #23 merged to main; beta synced
+
+### Not yet done
+
+- `index.html` still renders hardcoded May 2026 LTF data — display layer rebuild is next
+- Topic linking (Milestone 4) and backfill (Milestone 5) not started
+
+---
+
 ## 2026-06-08 — Pipeline: schema redesign and automated ingestion script
 
 ### What changed
