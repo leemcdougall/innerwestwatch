@@ -173,12 +173,17 @@
     letter-spacing: .05em;
     white-space: nowrap;
   }
-  .tag-crossing { background: #dbeafe; color: #1e40af; }
-  .tag-latm     { background: #ffedd5; color: #9a3412; }
-  .tag-parking  { background: #ede9fe; color: #5b21b6; }
-  .tag-speed    { background: #dcfce7; color: #166534; }
-  .tag-event    { background: #fce7f3; color: #9d174d; }
-  .tag-suburb   { background: var(--bg); color: var(--ink3); font-weight: 600; }
+  /* Type tag colours — add new types here as the pipeline ingests them */
+  .tag-crossing          { background: #dbeafe; color: #1e40af; }
+  .tag-latm              { background: #ffedd5; color: #9a3412; }
+  .tag-parking           { background: #ede9fe; color: #5b21b6; }
+  .tag-speed             { background: #dcfce7; color: #166534; }
+  .tag-event             { background: #fce7f3; color: #9d174d; }
+  .tag-report            { background: #f1f5f9; color: #475569; }
+  .tag-motion            { background: #fef9c3; color: #854d0e; }
+  .tag-notice-of-motion  { background: #fef9c3; color: #854d0e; }
+  .tag-infrastructure    { background: #d1fae5; color: #065f46; }
+  .tag-suburb            { background: var(--bg); color: var(--ink3); font-weight: 600; }
 
   .card-headline {
     font-size: 14px;
@@ -227,12 +232,19 @@
   }
   .card-link:hover { text-decoration: underline; }
 
-  /* ── EMPTY STATE ── */
+  /* ── EMPTY / ERROR STATES ── */
   .empty-state {
     grid-column: 1 / -1;
     text-align: center;
     padding: 48px 0;
     color: var(--ink3);
+    font-size: 14px;
+  }
+  .error-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 48px 0;
+    color: var(--warn);
     font-size: 14px;
   }
 
@@ -254,36 +266,34 @@
 </div>
 
 <main class="page">
-  <p class="section-heading" id="sectionHeading">18 May 2026 — Local Transport Forum</p>
+  <p class="section-heading" id="sectionHeading">Recent decisions</p>
   <div class="card-grid" id="cardGrid">
     <div class="empty-state">Loading…</div>
   </div>
 </main>
 
 <script>
+  // Human-readable labels for decision types ingested by the pipeline.
+  // Add new entries here when new types appear in D1.
   const TYPE_LABELS = {
-    crossing: 'Crossing',
-    latm:     'Traffic calming',
-    parking:  'Parking',
-    speed:    'Speed limit',
-    event:    'Event closure',
-  };
-
-  const TYPE_CLASS = {
-    crossing: 'tag-crossing',
-    latm:     'tag-latm',
-    parking:  'tag-parking',
-    speed:    'tag-speed',
-    event:    'tag-event',
+    crossing:         'Crossing',
+    latm:             'Traffic calming',
+    parking:          'Parking',
+    speed:            'Speed limit',
+    event:            'Event closure',
+    report:           'Report',
+    motion:           'Motion',
+    'notice-of-motion': 'Notice of motion',
+    infrastructure:   'Infrastructure',
   };
 
   function statusLabel(item) {
     const today = new Date().toISOString().slice(0, 10);
-    if (item.status === 'works-coming')   return { text: 'Works coming', cls: 'status-works-coming' };
-    if (item.status === 'council-confirmed') return { text: 'Council confirmed', cls: 'status-confirmed' };
-    if (item.status === 'forum-yes')      return { text: 'Forum approved', cls: 'status-forum-yes' };
-    if (item.status === 'forum-amended')  return { text: 'Approved with changes', cls: 'status-forum-amended' };
-    if (item.status === 'forum-no')       return { text: 'Not approved', cls: 'status-forum-no' };
+    if (item.status === 'works-coming')      return { text: 'Works coming',       cls: 'status-works-coming' };
+    if (item.status === 'council-confirmed') return { text: 'Council confirmed',  cls: 'status-confirmed' };
+    if (item.status === 'forum-yes')         return { text: 'Forum approved',     cls: 'status-forum-yes' };
+    if (item.status === 'forum-amended')     return { text: 'Approved with changes', cls: 'status-forum-amended' };
+    if (item.status === 'forum-no')          return { text: 'Not approved',       cls: 'status-forum-no' };
     if (item.status === 'on-agenda') {
       if (item.meetingDate < today) return { text: 'Outcome coming', cls: 'status-held' };
       return { text: 'On the agenda', cls: 'status-on-agenda' };
@@ -299,32 +309,31 @@
   }
 
   function renderCard(item) {
-    const status = statusLabel(item);
-    const typeLabel = TYPE_LABELS[item.type] || item.type;
-    const typeCls   = TYPE_CLASS[item.type]  || '';
+    const status     = statusLabel(item);
+    const typeLabel  = TYPE_LABELS[item.type] || item.type;
+    const typeClass  = 'tag-' + item.type.replace(/[^a-z0-9]/g, '-');
 
-    const suburbTags = item.suburbs.map(s =>
+    const suburbTags = (item.suburbs || []).map(s =>
       `<span class="tag tag-suburb">${s}</span>`
     ).join('');
 
-    const linkHref = item.detailPage || item.agendaUrl;
-    const linkText = item.detailPage ? 'Full details' : 'Council source';
+    const linkHref   = item.detailPage || item.agendaUrl;
     const linkTarget = item.detailPage ? '' : ' target="_blank" rel="noopener"';
 
-    return `<a class="item-card" href="${linkHref}"${linkTarget} data-suburbs="${item.suburbs.join(',')}">
+    return `<a class="item-card" href="${linkHref}"${linkTarget} data-suburbs="${(item.suburbs || []).join(',')}">
   <div class="card-tags">
-    <span class="tag ${typeCls}">${typeLabel}</span>
+    <span class="tag ${typeClass}">${typeLabel}</span>
     ${suburbTags}
   </div>
   <div class="card-headline">${item.headline}</div>
   <div class="card-footer">
-    <span class="card-meeting">LTF ${fmtDate(item.meetingDate)}</span>
+    <span class="card-meeting">${fmtDate(item.meetingDate)}</span>
     <span class="status-badge ${status.cls}">${status.text}</span>
   </div>
 </a>`;
   }
 
-  let allItems = [];
+  let allItems     = [];
   let activeFilter = 'all';
 
   function setFilter(suburb) {
@@ -336,10 +345,10 @@
   }
 
   function renderGrid() {
-    const grid = document.getElementById('cardGrid');
+    const grid    = document.getElementById('cardGrid');
     const visible = activeFilter === 'all'
       ? allItems
-      : allItems.filter(item => item.suburbs.includes(activeFilter) || item.suburbs.length === 0);
+      : allItems.filter(item => (item.suburbs || []).includes(activeFilter));
 
     if (visible.length === 0) {
       grid.innerHTML = '<div class="empty-state">No items for this suburb yet.</div>';
@@ -349,241 +358,38 @@
   }
 
   function buildFilterChips(items) {
-    const bar = document.getElementById('filterBar');
-    const suburbs = [...new Set(items.flatMap(i => i.suburbs))].sort();
+    // Remove any chips added by a previous fetch before rebuilding.
+    document.querySelectorAll('#filterBar .chip:not([data-suburb="all"])').forEach(c => c.remove());
+    const bar    = document.getElementById('filterBar');
+    const suburbs = [...new Set(items.flatMap(i => i.suburbs || []))].sort();
     suburbs.forEach(s => {
       const btn = document.createElement('button');
-      btn.className = 'chip';
+      btn.className      = 'chip';
       btn.dataset.suburb = s;
-      btn.textContent = s;
-      btn.onclick = () => setFilter(s);
+      btn.textContent    = s;
+      btn.onclick        = () => setFilter(s);
       bar.appendChild(btn);
     });
   }
 
-  // Data lives in data/items.json — copy updated content here when adding items.
-  const ITEMS = [
-  {
-    "id": "ltf-18may2026-01", "meeting": "ltf-18may2026", "item": 1,
-    "type": "crossing", "suburbs": ["Balmain"], "streets": ["Darling St", "Curtis Rd"],
-    "headline": "New raised crossing and roundabout — Darling St at Curtis Rd",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — raised pedestrian crossing and roundabout reconstruction at Darling St/Curtis Rd to proceed, with construction coordinated with bus operator Transit Systems.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69071",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-02", "meeting": "ltf-18may2026", "item": 2,
-    "type": "parking", "suburbs": ["Annandale"], "streets": ["Nelson Lane"],
-    "headline": "No parking zone extended — Nelson Lane",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — No Parking zone extended opposite the rear boundary of 265 Nelson St.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69072",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-03", "meeting": "ltf-18may2026", "item": 3,
-    "type": "latm", "suburbs": ["Marrickville"], "streets": ["Warburton St"],
-    "headline": "Kerb blister going in — Warburton St",
-    "status": "forum-amended", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved in principle — kerb blister to proceed to detailed design including community engagement and consideration of barrier protection, then return to Forum before construction.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69056",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-04", "meeting": "ltf-18may2026", "item": 4,
-    "type": "latm", "suburbs": ["Tempe"], "streets": ["Edwin St", "Tramway St", "Wentworth St", "Holbeach Ave"],
-    "headline": "Road closures for traffic calming works — Tempe South (Bunnings LATM)",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — temporary road closures across Tempe South streets and No Stopping restrictions on Wentworth St confirmed for 6 July to 5 August 2026, with contingency periods allowed.",
-    "worksStart": "2026-07-06",
-    "detailPage": "/meetings/ltf-18may2026/tempe-south/",
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69114",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-05", "meeting": "ltf-18may2026", "item": 5,
-    "type": "event", "suburbs": ["Marrickville"], "streets": ["Centennial St", "Woodland St", "Holmesdale St"],
-    "headline": "Temporary road closures — Beer, Footy and Food Festival",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — full road closures on Centennial St, Woodland St, and Holmesdale St on 18 July 2026 from 10am to 9pm for the Henson Park Beer, Footy and Food Festival.",
-    "worksStart": "2026-07-18", "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69115",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-06", "meeting": "ltf-18may2026", "item": 6,
-    "type": "crossing", "suburbs": ["Marrickville"], "streets": ["Illawarra Rd", "Wharf St"],
-    "headline": "New raised crossing — Illawarra Rd at Wharf St",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — raised pedestrian crossing at Illawarra Rd/Wharf St to proceed with associated signage and line markings.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69117",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-07", "meeting": "ltf-18may2026", "item": 7,
-    "type": "crossing", "suburbs": ["Marrickville"], "streets": ["Illawarra Rd", "Grove St"],
-    "headline": "New raised crossing — Illawarra Rd at Grove St",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — raised pedestrian crossing at Illawarra Rd/Grove St to proceed with associated signage and line markings.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69118",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-08", "meeting": "ltf-18may2026", "item": 8,
-    "type": "parking", "suburbs": ["Marrickville"], "streets": ["Smidmore St", "Edinburgh Rd"],
-    "headline": "No stopping zone extended — Smidmore St at Edinburgh Rd",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — No Stopping zone extended 17m northward on Smidmore St, with two 10-minute parking spaces installed in the area.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69125",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-09", "meeting": "ltf-18may2026", "item": 9,
-    "type": "latm", "suburbs": ["Summer Hill"], "streets": ["Nowranie St", "Smith St"],
-    "headline": "Kerb extensions — Nowranie St at Smith St",
-    "status": "forum-amended", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved in principle — kerb extensions and blister islands at Nowranie St/Smith St to proceed to detailed design including community engagement, then return to Forum before construction.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69122",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-10", "meeting": "ltf-18may2026", "item": 10,
-    "type": "crossing", "suburbs": ["Ashbury"], "streets": ["Hardy St", "Mount St"],
-    "headline": "New raised crossing and kerb extensions — Hardy St at Mount St",
-    "status": "forum-amended", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved in principle — raised pedestrian crossing with kerb extensions at Hardy St/Mount St to proceed to detailed design including community engagement, then return to Forum before construction.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69123",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-11", "meeting": "ltf-18may2026", "item": 11,
-    "type": "crossing", "suburbs": ["Leichhardt"], "streets": ["Allen St"],
-    "headline": "New raised crossing — Allen St",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — raised pedestrian crossing on Allen St to proceed, including relocation of existing No Stopping and Bus Zone signs.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69100",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-12", "meeting": "ltf-18may2026", "item": 12,
-    "type": "speed", "suburbs": ["Rozelle", "Lilyfield", "Ashfield", "Haberfield"], "streets": [],
-    "headline": "Speed limit dropping from 50 to 40 km/h — Rozelle, Lilyfield, Ashfield, Haberfield",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — signage and line marking plans for 50 to 40 km/h speed limit reductions in Haberfield, Rozelle, Lilyfield, and Ashfield North to proceed.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69092",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-13", "meeting": "ltf-18may2026", "item": 13,
-    "type": "parking", "suburbs": [], "streets": [],
-    "headline": "New kerbside EV charging spaces — various locations across Inner West",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — EV kerbside charging sites supported and to be signed as No Parking 8am–10pm except for electric vehicles actively charging.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69113",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-14", "meeting": "ltf-18may2026", "item": 14,
-    "type": "parking", "suburbs": ["Marrickville"], "streets": [],
-    "headline": "Resident parking scheme proposed — Mackey Park area",
-    "status": "forum-amended", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved with amendments — 2P restrictions approved on Renwick St, Ruby St (with a 12-month review), Warren Rd, Carrington Rd, and Richardson's Crescent; Junction St restrictions not supported.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69119",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-15", "meeting": "ltf-18may2026", "item": 15,
-    "type": "parking", "suburbs": ["Marrickville"], "streets": ["Schwebel St"],
-    "headline": "New angled parking — Schwebel St",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — 45-degree angled parking to be installed on the northern side of Schwebel St between Station St and Leofrene Ave.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69120",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-16", "meeting": "ltf-18may2026", "item": 16,
-    "type": "parking", "suburbs": ["Petersham"], "streets": ["Little Brighton St"],
-    "headline": "No parking restriction — Little Brighton St",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — 10.5m No Parking zone to be installed west of the driveway at 40 Station St (extended from the originally proposed 8.5m).",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69116",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  },
-  {
-    "id": "ltf-18may2026-17", "meeting": "ltf-18may2026", "item": 17,
-    "type": "parking", "suburbs": ["Leichhardt"], "streets": ["Lords Rd", "Davies St"],
-    "headline": "Resident parking scheme proposed — Lords Rd and Davies St",
-    "status": "forum-yes", "meetingDate": "2026-05-18",
-    "minutesDate": "2026-05-18", "resolution": "Approved — 2P permit parking restrictions (8am–6pm Mon–Fri, permit holders excepted, Area L1) to be installed on both sides of Davies St and on northern Lords Rd.",
-    "worksStart": null, "detailPage": null,
-    "agendaUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_AGN_4285_AT.HTM#69121",
-    "minutesUrl": "https://innerwest.infocouncil.biz/Open/2026/05/LTF_18052026_MIN_4285.HTM"
-  }
-  ];
-
-  // Initial render from hardcoded data — this runs immediately so the page
-  // is never blank while the API fetch is in flight.
-  allItems = ITEMS;
-  buildFilterChips(ITEMS);
-  renderGrid();
-
-  // ── Live data from /api/items ────────────────────────────────────────────
-  // After the initial render, fetch fresh data from the D1-backed API.
-  // On success: replace allItems, rebuild filter chips, re-render the grid.
-  // On failure: silently keep the hardcoded ITEMS — no error shown to users.
-  //
-  // If a suburb filter is already active (e.g. from a previous chip click),
-  // pass it to the API so the response is scoped to that suburb from the start.
-  (async function fetchLiveItems() {
+  (async function init() {
+    const grid = document.getElementById('cardGrid');
     try {
-      // Build API URL, passing the active suburb filter if one is set.
-      const apiUrl = activeFilter
-        ? `/api/items?suburb=${encodeURIComponent(activeFilter)}`
-        : '/api/items';
+      const resp = await fetch('/api/items');
+      if (!resp.ok) throw new Error(`API returned ${resp.status}`);
 
-      const resp = await fetch(apiUrl);
-      if (!resp.ok) return; // keep hardcoded data on HTTP error
-
-      const liveItems = await resp.json();
-      if (!Array.isArray(liveItems) || liveItems.length === 0) return;
-
-      // Replace in-memory items with live data and re-render.
-      // If we fetched with a suburb filter the live data is already filtered;
-      // we still need allItems to contain the full set for chip generation,
-      // so when a suburb filter was active we do a second unfiltered fetch.
-      if (activeFilter) {
-        // Fetch the full set in the background for chip counts.
-        const allResp = await fetch('/api/items');
-        if (allResp.ok) {
-          const allLive = await allResp.json();
-          if (Array.isArray(allLive) && allLive.length > 0) {
-            allItems = allLive;
-            buildFilterChips(allItems);
-            renderGrid(); // renderGrid re-applies activeFilter internally
-          }
-        }
-      } else {
-        allItems = liveItems;
-        buildFilterChips(allItems);
-        renderGrid();
+      const items = await resp.json();
+      if (!Array.isArray(items) || items.length === 0) {
+        grid.innerHTML = '<div class="empty-state">No decisions found.</div>';
+        return;
       }
-    } catch (_err) {
-      // Network error or JSON parse failure — keep hardcoded data silently.
+
+      allItems = items;
+      buildFilterChips(allItems);
+      renderGrid();
+    } catch (err) {
+      grid.innerHTML = `<div class="error-state">Could not load decisions — try refreshing.</div>`;
+      console.error('Failed to fetch /api/items:', err);
     }
   })();
 </script>
