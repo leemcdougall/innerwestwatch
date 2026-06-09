@@ -51,9 +51,11 @@ export async function onRequestGet({ request, env }) {
       bindParams.push(`%"${street}"%`);
     }
 
-    const whereSQL = whereClauses.length
-      ? `WHERE ${whereClauses.join(' AND ')}`
-      : '';
+    // Always exclude merged-away topic rows — canonical rows have canonical_topic_id IS NULL.
+    // See ADR 0002.
+    whereClauses.unshift('t.canonical_topic_id IS NULL');
+
+    const whereSQL = `WHERE ${whereClauses.join(' AND ')}`;
 
     // ── Base query ────────────────────────────────────────────────────────
     // decisions → topics → meetings
