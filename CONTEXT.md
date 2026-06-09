@@ -80,6 +80,8 @@ When starting a new session, run `gh issue list` to see what's open. When work i
 
 ## Topic Linking
 
-The process of associating a new Agenda Item with an existing Topic.
+The process of identifying that two or more Decisions refer to the same real-world issue and consolidating them under one canonical Topic.
 
-The system suggests links based on matching streets, suburbs, and type. A human confirms or rejects the suggestion. Confirmed links are stored; unlinked items remain visible but flagged as pending.
+Linking is done offline by a human using the deduplication tool (`db/dedupe.js`). The tool surfaces candidate pairs based on matching type, overlapping streets, and meeting dates within an 18-month window. The human chooses one of three dispositions per pair: merge (confirmed duplicate), dismiss once (suppress for 18 months), or recurring (permanently suppress — same streets, genuinely distinct program cycle).
+
+A merged-away Topic has its `canonical_topic_id` set to point to the surviving canonical row. The API and frontend only show canonical Topics. See ADR 0002.

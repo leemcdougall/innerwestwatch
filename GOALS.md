@@ -115,26 +115,29 @@ Next 4 steps to unblock:
 | # | Milestone | Status | Depends on |
 |---|---|---|---|
 | 1 | D1 schema defined, items.json migrated, frontend reads from Worker | ✅ Done 2026-06-08 | — |
-| 2 | Scanner running on schedule, new Documents detected | — | Milestone 1 |
-| 3 | Ingestion producing AgendaItems from LTF agendas | — | Milestone 2 |
-| 4 | Topic linking working for LTF items | — | Milestone 3 |
-| 5 | Backfill of open Topics complete | — | Milestone 4 |
-| 6 | Additional committee types added (Council, FMACC, etc.) | — | Milestone 3 |
-| 7 | Document tools (image conversion, PDF extraction) | — | Milestone 3 |
-| 8 | Custom domain | — | Any time |
+| 2 | Scanner running on schedule, new Documents detected | ✅ Done 2026-06-09 | Milestone 1 |
+| 3 | Ingestion producing decisions from all committee agendas | ✅ Done 2026-06-09 | Milestone 2 |
+| 4 | Topic linking — offline dedup tool + schema | ✅ Done 2026-06-09 | Milestone 3 |
+| 5 | Backfill — run dedupe.js to link 86 candidate pairs | ❌ Next | Milestone 4 |
+| 6 | Additional committee types added (Council, FMACC, etc.) | ✅ Done 2026-06-09 | Milestone 3 |
+| 7 | Document tools (image conversion, PDF extraction) | ⏳ Partial — images ingested, not shown | Milestone 3 |
+| 8 | Custom domain | ❌ Not started | Any time |
 
 ---
 
 ## What's already built
 
-- Home page with suburb-filtered card feed (17 items, 18 May 2026 LTF)
+- Home page with suburb-filtered card feed — fetches from `/api/items` (D1-backed, all committees)
 - Tempe South LATM detail page (`/meetings/ltf-18may2026/tempe-south/`)
-- `data/items.json` — historical record (D1 is now source of truth)
+- `data/items.json` — historical record only (D1 is source of truth)
 - `CONTEXT.md` — canonical domain glossary
-- `docs/adr/` — architecture decision records
-- `db/schema.sql` — D1 schema
+- `docs/adr/` — two ADRs: street filter (0001), topic linking design (0002)
+- `db/schema.sql` — D1 schema (8 tables including topic_merge_log, merge_decisions)
+- `db/ingest.js` — auto-discovery ingestion pipeline (~990 lines)
+- `db/dedupe.js` — offline topic deduplication tool
 - `db/migrate.js` + `db/seed.sql` — migration tooling
 - `functions/api/items.js` — Worker API
 - `wrangler.toml` — Cloudflare config
+- `.github/workflows/ingest.yml` — weekly scheduled ingest (Monday 9am AEST)
 - Cloudflare Pages deploy (auto-deploy from `main`)
 - Branch strategy: `claude/*` → `beta` → `main`
