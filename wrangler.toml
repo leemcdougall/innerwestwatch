@@ -3,6 +3,13 @@
 name = "innerwestwatch"
 compatibility_date = "2024-01-01"
 
+# Static site lives at the repo root; Functions live in /functions.
+# Setting pages_build_output_dir makes Cloudflare Pages treat THIS file as the
+# source of truth for configuration — including the D1 binding below. Without it,
+# Git-integrated Pages ignores [[d1_databases]] here and only reads bindings set
+# in the dashboard, which left env.DB undefined in production.
+pages_build_output_dir = "."
+
 [[d1_databases]]
 binding = "DB"
 database_name = "counciltracker"
