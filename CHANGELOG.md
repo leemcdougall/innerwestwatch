@@ -4,6 +4,24 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-10 — Milestone 6: human review pass of cross-type link suggestions
+
+Reviewed the matcher's street-corroborated cross-type suggestions (separate topics sharing a suburb + 2+ streets) and confirmed/rejected each against the actual infocouncil source documents. Four sub-agents read the agendas/minutes in parallel so calls were grounded in the source text, not guessed from headlines — which mattered: my initial "strong match" guess on Curtis/Darling was wrong.
+
+### Confirmed and applied (`db/migrations/0003-human-review-merges.sql`, applied --remote)
+- **Bunnings Tempe** — merged "Traffic calming works near Bunnings Tempe" (latm, 16 Feb, Item 13) + "Bunnings LATM temporary road closures" (event, 18 May, Item 4). The May agenda explicitly cites the Feb Item 13 approval; the closures construct the adopted design. Canonical = the LATM works topic; stage now `in-progress` (works_start 2026-07-06), span Feb–May.
+- **Unwins Bridge Rd, Tempe** — merged "Pedestrian safety review — Unwins Bridge Rd & Hillcrest St" (notice-of-motion, 17 Feb, Item 37) + "raised pedestrian crossing upgrade" (crossing, 15 Jun, Item 18). The Feb motion directed a review of this crossing and to report to the LTF within 3 months; the June item is that review. Canonical = the crossing topic; span Feb–Jun.
+- Each confirmed link repointed decisions+images, repointed its subject alias to the canonical topic and promoted it to `source='human'`, and dropped the orphan topic. Result: 287 → 285 topics, 0 orphan decisions/images/aliases, 2 human aliases.
+
+### Rejected (kept separate)
+- **Curtis Rd / Darling St, Balmain** — two *different* crossings on different legs of the intersection (Design Plan 10390 on Curtis Rd vs 10313 on Darling St; different parking impacts; B adds roundabout works; no cross-reference).
+- **St Peters / WestConnex parklands** — not threaded. The three D1 topics do **not** match the real 16 Jun 2026 Council agenda (real Item 16 is a contamination *report*, Items 24/30 are unrelated confidential items). Looks like an ingest extraction/numbering error. Flagged as a separate investigation task — not a threading decision.
+
+### Known limitation surfaced
+- `deriveStage` (max rank across decisions) reads the Unwins Feb motion's "approved" outcome as `decided`, even though the crossing works themselves are only proposed. Not overridden (the next ingest run would recompute the same value); the fix belongs in the staging logic, tracked for later.
+
+---
+
 ## 2026-06-10 — Persistent topics by subject threading + committee-neutral status
 
 The big rebuild of the topic layer. "Topic" as a persistent issue never actually existed in the data — ingest minted one isolated topic per item (357 items = 357 topics), and the old dedupe tool only linked same-type, shared-street pairs. Asking "what's the latest on the Leichhardt Aquatic Centre?" returned 10 disconnected rows all reading "on-agenda". Now it returns one topic, `stage=decided`, with a 10-decision evidence trail Feb→Jun 2026.
