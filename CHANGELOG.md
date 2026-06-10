@@ -4,58 +4,78 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
-## 2026-06-09 — Ingest pipeline: full portal scan, vision, all committees (Milestones 2, 3, 6)
+## 2026-06-10 — Persistent topics by subject threading + committee-neutral status
+
+The big rebuild of the topic layer. "Topic" as a persistent issue never actually existed in the data — ingest minted one isolated topic per item (357 items = 357 topics), and the old dedupe tool only linked same-type, shared-street pairs. Asking "what's the latest on the Leichhardt Aquatic Centre?" returned 10 disconnected rows all reading "on-agenda". Now it returns one topic, `stage=decided`, with a 10-decision evidence trail Feb→Jun 2026.
+
+### Scope change (recorded here so future sessions don't revert to the old framing)
+- Transport-only was the easy-win test case. Scope is now **every committee, every kind of issue**. The full 14-committee ingest was intentional reconnaissance.
+- Street search **crosses suburb boundaries** ("what's close to me", border residents).
+- **Infrastructure first**: get ingest + threading right before rebuilding the frontend.
+- Human oversight must **trend to zero** — every confirmed link is learned, never re-asked.
+
+### What changed
+- **ADR 0003** (persistent topics by subject threading, learning matcher) — amends/supersedes ADR 0002. We thread, never merge.
+- **ADR 0004** (committee-neutral status) — `stage` on the topic + raw `outcome` on the decision; retires the LTF-specific status vocabulary.
+- **Schema** — `migrations/0001-topic-threading.sql` (applied): `topics.subject/stage/first_seen/last_seen`, `decisions.headline/outcome`, new `topic_subjects` learned-alias store. `migrations/0002-thread-backfill.sql` (applied): threaded the 357 decisions into 287 topics.
+- **`db/match.js`** (new, supersedes `db/dedupe.js` which was removed) — offline reconciliation: subject clustering (fuzzy subset/Jaccard ≥ 0.6), distinct-recurrence split on >270-day gap, street-corroborated cross-type review queue (never auto-merges). Backfill result: 287 topics, 45 thread 2+ decisions, 287 auto aliases.
+- **`db/ingest.js`** — rewritten write path: extracts canonical `subject` + raw `outcome`, attaches-or-creates topics via `topic_subjects` (exact alias match, no fuzzy guess in source of truth), upserts topics in place (FK-safe), recomputes stage + union streets/suburbs from full decision history.
+- **`db/lib/topics.js`** (new) — shared `normKey`/`slug`/`sameSubject`/`deriveStage` used by both ingest and match, so a subject normalises identically in both.
+- **`functions/api/items.js`** — now serves one object per **topic** with its `decisions[]` history, neutral `stage`, union places. Dropped the retired `canonical_topic_id` filter.
+- Docs rewritten top-down: CLAUDE.md, GOALS.md, CONTEXT.md.
+
+### Verification
+- Live DB after backfill: 287 topics / 357 decisions / 287 aliases, **0 orphan decisions or images**.
+- Stage derivation: decided 161 / proposed 115 / in-progress 11. Leichhardt Aquatic Centre = `decided` (was falsely `proposed`).
+- Known recurrences recovered: Leichhardt Aquatic Centre (10 decisions), South Marrickville flood study (4); Italian Festa 2025/2026 kept distinct; Bunnings LATM↔event surfaced for human review (not auto-merged).
+- `db/lib/topics.js` unit-tested (9/9). All scripts pass `node --check`.
+
+### Next
+- Human review pass of match.js cross-type suggestions (writes `source='human'` aliases).
+- Frontend rebuild on the threaded model.
+
+---
+
+## 2026-06-09 — Milestone 4: topic linking schema, offline dedup tool, frontend hardcode purge
 
 ### What changed
 
-**`db/ingest.js` — complete rewrite**
-- Was: hardcoded 4-meeting LTF list, no images, LTF-only item splitting
-- Now: auto-discovery scanner across all committees on infocouncil.biz
-- POSTs to infocouncil.biz with ViewState to discover meetings by committee/year/month
-- Converts `_WEB.htm` stub links to `_AT.HTM` content pages automatically
-- Generalised item splitting works for any committee code, not just LTF
-- Groups duplicate item refs by item number, keeps largest section (eliminates TOC stubs)
-- Images: extracts `<img>` URLs per item, fetches as base64, sends to Claude vision
-- Batching: max 80 images per Claude call; minutes batched at 20 items/call
-- Large agendas (Council has 50+ items, 100+ images) handled correctly
-- Minutes-only committees (Public Forum) handled as special case
-- Self-auditing: warns via GitHub Actions `::warning::` annotations when new/unknown committees appear
-- Incremental: skips already-ingested meetings
-- 6th table added: `images` (id, topic_id, url, description, sequence) — auto-migrated on run
+**index.html — hardcoded data purged**
+- Removed the 17-item hardcoded LTF May 2026 array and the dual render path (hardcoded-first, then API override)
+- Page now fetches from `/api/items` only, with a proper loading state and error state
+- Section heading is now generic ("Recent decisions") not hardcoded to a specific meeting
+- Type tag CSS classes expanded to cover all types now in D1 (report, motion, notice-of-motion, infrastructure, etc.)
 
-**New committees in config**
-- Council, Local Transport Forum, Flood Management, Public Forum
-- LRAC Leichhardt (ID 14), Implementation Advisory Group (ID 17) added after audit warnings
-- 12 committees total in COMMITTEES config
+**D1 schema additions (applied remotely)**
+- `topics.canonical_topic_id TEXT` — null = canonical row; non-null = merged-away duplicate pointing to its canonical parent
+- Trigger `trg_topics_no_chain` — enforces no self-reference and no pointer chaining on `canonical_topic_id`
+- `topic_merge_log` — append-only audit table for every confirmed merge
+- `merge_decisions` — disposition memory for the dedup tool (merged / dismissed_once / recurring)
 
-**GitHub Actions workflow (`.github/workflows/ingest.yml`)**
-- `--months` and `--committee` inputs for manual dispatch
-- `GITHUB_ACTIONS: 'true'` env var triggers `::warning::` annotations on unknown docs
+**API (`functions/api/items.js`)**
+- Added `WHERE t.canonical_topic_id IS NULL` so merged-away rows are never returned to the frontend
 
-**Full data ingest run completed**
-- D1 now contains 357 decisions across 23 meetings, 170 images
-- Span: Aug 2025 – Jun 2026 (LTF); Dec 2025 – Jun 2026 (Council/FMAC)
-- Auto-discovered brand new meeting `ltf-15jun2026` (June 15, 2026) during run
+**`db/dedupe.js` — offline deduplication tool**
+- Interactive CLI: finds same-type topics with overlapping streets within an 18-month window
+- Ranked by street overlap fraction (strongest candidates first)
+- Three dispositions: merge (sets canonical_topic_id + logs), dismiss once (18-month suppression), recurring (permanent suppression)
+- Dry-run mode: `node db/dedupe.js --dry-run`
+- Finds 86 candidate pairs on current data
 
-### D1 state after this session
+**`docs/adr/0002-topic-linking-offline-deduplication.md`**
+- Records the design decision: offline dedup over ingest-time matching
+- Documents why ingest-time matching was rejected (weak identity signal, cold-start problem, nullable FK risk)
 
-| Committee | Meetings | Items |
-|-----------|----------|-------|
-| Council | 8 | 250 |
-| Local Transport Forum | 9 | 98 |
-| Flood Management | 2 | 7 |
-| Public Forum | 2 | 2 |
-| **Total** | **23** | **357** |
+### Decisions made
 
-### Issues closed
+- Ingest-time deduplication rejected after a structured three-agent debate (pro / against / manager) that surfaced: type+street is not a reliable identity signal without a time bound; the high-confidence path fires rarely given 1.55 avg decisions per topic; nullable topic_id breaks existing query guarantees
+- `canonical_topic_id` on `topics` chosen over a `topic_links` join table — simpler for strictly one canonical row per cluster
+- Three dispositions (merge / dismiss_once / recurring) added to handle Inner West's recurring program cycles (annual LATM reviews, kerb programs, school zones)
 
-- #9 and #12 closed (pipeline complete and data ingested)
-- PR #23 merged to main; beta synced
+### PRs merged
 
-### Not yet done
-
-- `index.html` still renders hardcoded May 2026 LTF data — display layer rebuild is next
-- Topic linking (Milestone 4) and backfill (Milestone 5) not started
+- PR #24: feature branch → beta
+- PR #25: beta → main (auto-deployed to https://innerwestwatch.pages.dev)
 
 ---
 

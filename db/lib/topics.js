@@ -1,0 +1,69 @@
+/**
+ * db/lib/topics.js — shared topic-threading primitives (ADR 0003, 0004)
+ *
+ * One source of truth for how a council item's SUBJECT becomes a clustering key,
+ * how a topic id is slugged, and how a committee-neutral lifecycle STAGE is derived
+ * from outcomes. Both the live ingest (db/ingest.js) and the offline reconciliation
+ * pass (db/match.js) import these so a subject normalises the same way in both places
+ * — otherwise an alias written by one would never be hit by the other.
+ */
+
+// Words dropped before clustering: articles, prepositions, street-type tokens, and a
+// few council-generic words. Street NAMES survive (they corroborate); only the type
+// suffix (st/rd/ave) is noise once the name is present.
+export const STOP = new Set(('the a an and or of at to for on in with by st street rd road ave '
+  + 'avenue ln lane pl place council plan policy new').split(' '));
+
+// Normalise a subject to a stable clustering key: lowercase, strip punctuation, drop
+// stop-words, sort the remaining content words so word order never matters.
+export function normKey(subject) {
+  return (subject || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/).filter(w => w && !STOP.has(w)).sort().join(' ');
+}
+
+export function tokenSet(subject) {
+  return new Set(normKey(subject).split(' ').filter(Boolean));
+}
+
+// Slug a subject into a topic id stem, e.g. "Leichhardt Aquatic Centre Stage 2"
+// -> "leichhardt-aquatic-centre-stage-2".
+export function slug(subject) {
+  return (subject || 'topic').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '').slice(0, 50) || 'topic';
+}
+
+// Two subjects are the SAME issue when their content-word sets are near-identical:
+// one is a subset of the other (an extra "park"/"indoor"/place token), or their
+// Jaccard overlap clears SUBJECT_JACCARD. Used by the offline matcher to collapse
+// the slightly different phrasings Haiku emits for a recurring subject. Ingest itself
+// matches only on EXACT normKey via the alias store (no fuzzy guess baked into source).
+export const SUBJECT_JACCARD = 0.6;
+export function sameSubject(a, b) {
+  if (a.size === 0 || b.size === 0) return false;
+  let inter = 0;
+  for (const w of a) if (b.has(w)) inter++;
+  const smaller = Math.min(a.size, b.size);
+  if (inter === smaller) return true;                 // subset
+  return inter / (a.size + b.size - inter) >= SUBJECT_JACCARD;
+}
+
+// Rank a single decision's progress on the neutral lifecycle (ADR 0004).
+//   4 in-progress · 3 decided · 2 deferred · 1 proposed
+export function stageRank({ outcome, works_start } = {}) {
+  const o = (outcome || '').toLowerCase();
+  if (works_start || o.includes('executed') || o.includes('underway')) return 4;
+  if (o && (o.includes('defer') || o.includes('held over'))) return 2;
+  if (o) return 3;
+  return 1;
+}
+
+const STAGE_BY_RANK = { 4: 'in-progress', 3: 'decided', 2: 'deferred', 1: 'proposed' };
+
+// A topic's stage is the most-advanced point any of its decisions reached, so an issue
+// approved months ago does not read "proposed" just because a follow-up motion is its
+// latest row. `decisions` is an array of { outcome, works_start }.
+export function deriveStage(decisions) {
+  let rank = 1;
+  for (const d of decisions) rank = Math.max(rank, stageRank(d));
+  return STAGE_BY_RANK[rank];
+}

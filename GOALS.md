@@ -10,7 +10,11 @@ The project may expand beyond Inner West to other Australian councils. Preferred
 
 ## North star
 
-A resident types their street name and immediately sees every open council decision that affects them — past context, current status, and what's coming next.
+A resident types their **street or suburb** and immediately sees every council issue near them — threaded across meetings, types, and committees — with past context, current stage, and what's coming next. Street search **crosses suburb boundaries**: it answers "what's close to me", not "what was filed under my suburb".
+
+The transport-only digest was the first, easy-win test case. The scope is now **every committee and every kind of issue** (transport, flood, waste, planning, governance), because residents care about all of them and the same threading model serves them all. The 14-committee / 6-month full ingest was intentional reconnaissance to understand that scope before modelling it.
+
+**Infrastructure first.** The data layer must be right — ingest, threading, the ability to ask "what's the latest on X?" and get a true answer — before the resident-facing frontend is rebuilt on top of it. See `docs/adr/0003` (persistent topics by subject threading) and `0004` (committee-neutral status).
 
 ---
 
@@ -32,23 +36,23 @@ A resident types their street name and immediately sees every open council decis
 
 See `CONTEXT.md` (repo root) for canonical definitions.
 
-**Committee** → holds many **Meetings** → each produces **Documents** (agenda, minutes, attachments)
+**Committee** → holds many **Meetings** → each produces **Documents** (agenda, minutes, attachments).
 
-**Topic** ← linked to many **Agenda Items** → each Item points to its source Documents
+**Topic** (persistent issue, carries a canonical **Subject** + neutral **Stage**) ← threads many **Decisions** → each Decision is one appearance at one Meeting, carrying its own headline + raw **Outcome**.
 
-Residents follow Topics. Items are the evidence trail underneath.
+Many Decisions point to ONE Topic. We thread, never merge (ADR 0003). The learned `topic_subjects` alias store attaches recurring subjects automatically so human oversight trends to zero. Residents follow Topics; Decisions are the evidence trail underneath.
 
 ---
 
 ## API
 
-`GET /api/items` — served by `functions/api/items.js`
+`GET /api/items` — served by `functions/api/items.js`. Returns one object per **Topic**, each with its threaded `decisions[]` history, neutral `stage`, and the union of `suburbs`/`streets`.
 
 Filters:
 - `?suburb=Marrickville` — civic/interest filter (case-insensitive)
 - `?street=Illawarra+Rd` — geographic filter (case-insensitive, repeatable for multiple streets)
 
-Suburb and street are intentionally separate filters — suburb boundaries do not map to physical proximity. See `docs/adr/0001-api-street-filter.md`.
+A filter matches a Topic if any of its decisions touched that place. Suburb and street are intentionally separate filters — suburb boundaries do not map to physical proximity, and street search crosses them. See `docs/adr/0001-api-street-filter.md`.
 
 ---
 
@@ -56,29 +60,27 @@ Suburb and street are intentionally separate filters — suburb boundaries do no
 
 Modules are independent. Each can be built and shipped without the others being complete.
 
-### 0. Core — data model + database ✅ DONE (Milestone 1, 2026-06-08)
+### 0. Core — data model + database ✅ DONE
 
-- D1 schema defined: `committees`, `meetings`, `topics`, `decisions`, `documents`
-- Schema redesigned 2026-06-08: `agenda_items` → `decisions`; suburb/street junction tables replaced with JSON arrays on `topics`; agenda/minutes URLs moved to `meetings`
+- D1 schema: `committees`, `meetings`, `topics`, `decisions`, `documents`, `images`, `topic_subjects` (learned alias store)
+- Threaded model: persistent `topics` carry `subject` + neutral `stage`; `decisions` carry per-appearance `headline` + raw `outcome` (migration `0001-topic-threading.sql`)
+- `db/lib/topics.js` — shared subject/stage primitives (normKey, slug, sameSubject, deriveStage)
 - `CONTEXT.md` — canonical term definitions
 
-### 1. Pipeline — automated ingestion ✅ DONE (2026-06-09)
+### 1. Pipeline — automated ingestion ✅ DONE (threading-aware)
 
-*Fetches HTML from infocouncil.biz, extracts structured data with Claude API, writes to D1.*
+*Fetches HTML from infocouncil.biz, extracts Subject + neutral Outcome with Claude, threads each Decision onto a persistent Topic via the alias store.*
 
-- `db/ingest.js` — full rewrite, auto-discovery scanner across all committees
-- Vision-enabled: fetches images, sends to Claude vision, stores descriptions in `images` table
-- GitHub Actions workflow runs Mondays 9am Sydney; manual dispatch with `--months` and `--committee`
-- 357 decisions ingested across 23 meetings, 170 images (Aug 2025 – Jun 2026)
+- `db/ingest.js` — auto-discovery pipeline; attaches-or-creates by subject (exact alias lookup), recomputes topic stage + union streets/suburbs from the full decision history
+- GitHub Actions workflow `.github/workflows/ingest.yml` — runs Mondays 9am Sydney
+- Credentials live in `.env` (gitignored) + GitHub secrets: `ANTHROPIC_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DATABASE_ID`, `CLOUDFLARE_D1_TOKEN`
 
-### 2. Scanner — detect new meetings automatically ✅ DONE (2026-06-09)
+### 2. Scanner — detect new meetings automatically
+*Extends the pipeline to check infocouncil.biz for new or updated documents.*
 
-*Built into the pipeline — ingest.js auto-discovers all meetings on infocouncil.biz.*
-
-- POSTs to portal to discover meetings by committee/year/month
-- Skips already-ingested meetings (incremental)
-- Self-auditing: GitHub Actions warnings when unknown committees or document types appear
-- Runs on schedule weekly; new meeting `ltf-15jun2026` auto-discovered during first run
+- Check portal for new meetings not yet in D1
+- Re-check known meetings for newly published minutes
+- Run on GitHub Actions schedule — no manual triggering needed
 
 ### 3. Frontend — resident-facing site
 *What residents actually see.*
@@ -88,12 +90,13 @@ Modules are independent. Each can be built and shipped without the others being 
 - "Follow" via localStorage — no account required
 - Link to original infocouncil source on every item
 
-### 4. Topic linking — connect decisions across meetings
-*When the same real-world issue appears at multiple meetings, link them to one Topic.*
+### 4. Topic threading — connect decisions across meetings ✅ DONE (backfill applied)
+*The same real-world issue appearing at multiple meetings threads onto one persistent Topic.*
 
-- Auto-suggest links based on matching street + suburb + type
-- Flag ambiguous matches for human confirmation
-- Unlinked decisions remain visible, marked pending
+- `db/match.js` — offline reconciliation: clusters by subject (fuzzy subset/Jaccard), splits distinct recurrences on a >270-day gap, surfaces street-corroborated cross-type near-misses for human review (never auto-merges)
+- Backfill applied 2026-06-10: 357 decisions → 287 persistent topics (45 thread 2+ decisions), 287 learned aliases
+- Confirmed links persist to `topic_subjects` so oversight trends to zero (ADR 0003)
+- Superseded `db/dedupe.js` (merge-based, ADR 0002) — removed
 
 ### 5. Document tools — make source material readable
 
@@ -113,25 +116,31 @@ Modules are independent. Each can be built and shipped without the others being 
 |---|---|---|---|
 | 1 | D1 schema defined, items.json migrated, frontend reads from Worker | ✅ Done 2026-06-08 | — |
 | 2 | Scanner running on schedule, new Documents detected | ✅ Done 2026-06-09 | Milestone 1 |
-| 3 | Ingestion producing decisions from LTF agendas | ✅ Done 2026-06-09 | Milestone 2 |
-| 4 | Topic linking working — connect decisions across meetings | — | Milestone 3 |
-| 5 | Backfill of open Topics complete | — | Milestone 4 |
-| 6 | Additional committee types added (Council, FMACC, etc.) | ✅ Done 2026-06-09 | Milestone 3 |
-| 7 | Document tools (image conversion, PDF extraction) | — | Milestone 3 |
-| 8 | Custom domain | — | Any time |
+| 3 | Ingestion producing decisions from all committee agendas | ✅ Done 2026-06-09 | Milestone 2 |
+| 4 | Persistent topics by subject threading + neutral status (ADR 0003/0004): schema, match.js, ingest rewrite, API | ✅ Done 2026-06-10 | Milestone 3 |
+| 5 | Backfill — thread the 357 existing decisions into real topics | ✅ Done 2026-06-10 | Milestone 4 |
+| 6 | Human review pass of match.js cross-type suggestions (writes `human` aliases) | ❌ Next | Milestone 5 |
+| 7 | Frontend rebuild on the threaded model (topic pages, street/suburb search crossing boundaries) | ❌ Not started | Milestone 5 |
+| 8 | Document tools (image conversion, PDF extraction) | ⏳ Partial — images ingested, not shown | Milestone 3 |
+| 9 | Custom domain | ❌ Not started | Any time |
 
 ---
 
 ## What's already built
 
-- Home page with suburb-filtered card feed (17 items, 18 May 2026 LTF)
+- Home page with suburb-filtered card feed — fetches from `/api/items` (D1-backed, all committees)
 - Tempe South LATM detail page (`/meetings/ltf-18may2026/tempe-south/`)
-- `data/items.json` — historical record (D1 is now source of truth)
+- `data/items.json` — historical record only (D1 is source of truth)
 - `CONTEXT.md` — canonical domain glossary
-- `docs/adr/` — architecture decision records
-- `db/schema.sql` — D1 schema
-- `db/migrate.js` + `db/seed.sql` — migration tooling
-- `functions/api/items.js` — Worker API
+- `docs/adr/` — ADRs: street filter (0001), offline dedup (0002, superseded), persistent topics by subject threading (0003), committee-neutral status (0004)
+- `db/schema.sql` — D1 schema (threaded topics, decision-level headline/outcome, `topic_subjects` alias store)
+- `db/migrations/` — `0001-topic-threading.sql` (applied), `0002-thread-backfill.sql` (applied)
+- `db/ingest.js` — auto-discovery pipeline; attaches-or-creates topics by subject
+- `db/match.js` — offline reconciliation / backfill tool (supersedes the removed `db/dedupe.js`)
+- `db/lib/topics.js` — shared subject/stage primitives
+- `db/migrate.js` + `db/seed.sql` — legacy seed tooling
+- `functions/api/items.js` — Worker API (serves threaded topics)
 - `wrangler.toml` — Cloudflare config
+- `.github/workflows/ingest.yml` — weekly scheduled ingest (Monday 9am AEST)
 - Cloudflare Pages deploy (auto-deploy from `main`)
 - Branch strategy: `claude/*` → `beta` → `main`
