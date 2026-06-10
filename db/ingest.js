@@ -25,6 +25,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { normKey, slug, deriveStage } from './lib/topics.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -497,6 +498,7 @@ function buildAgendaPrompt(committeeId) {
 For each item section below, extract:
 - item_number: the integer from "Item N" in the heading
 - type: one of exactly: ${committee.types}${committee.typeHints}
+- subject: the canonical SUBJECT — the stable name of the underlying project, place, event, policy, or works that stays the same if this item returns to a later meeting (possibly at a different committee). Strip meeting-specific verbs, outcomes, and dates; keep distinguishing place/street names that are part of the issue's identity. This is what threads recurring items into one topic. E.g. headline "FDC appointed to build Leichhardt pool" -> subject "Leichhardt Aquatic Centre Stage 2"; headline "Road closures — Italian Festa, 25 Oct 2026" -> subject "Italian Festa road closures, Norton St".
 - headline: a plain-language summary in 12 words or fewer, written for a resident (not bureaucratic). Lead with what's changing or being decided. Include street name if one is mentioned. E.g. "New raised crossing — Darling St at Curtis Rd" or "DA approved — 42 Smith St, Marrickville"
 - suburbs: array of suburb names mentioned as affected locations (empty array if none)
 - streets: array of street names mentioned as affected locations, e.g. "Illawarra Rd", "Wharf St" (empty array if none)
@@ -511,6 +513,7 @@ Example:
   {
     "item_number": 1,
     "type": "crossing",
+    "subject": "Darling St & Curtis Rd crossing",
     "headline": "New raised crossing — Darling St at Curtis Rd",
     "suburbs": ["Balmain"],
     "streets": ["Darling St", "Curtis Rd"],
@@ -522,27 +525,15 @@ Example:
 // ─── build Claude extraction prompt for minutes resolutions ───────────────────
 function buildMinutesPrompt(committeeId) {
   const committee = COMMITTEES[committeeId];
-  const isLtf = committee.slug === 'ltf';
-  const statuses = isLtf
-    ? 'forum-yes | forum-amended | forum-no'
-    : 'approved | approved-amended | not-supported | deferred | noted';
-  const statusHints = isLtf
-    ? `
-  - forum-yes = approved without changes
-  - forum-amended = approved with amendments or in principle (returns to Forum)
-  - forum-no = not supported or deferred indefinitely`
-    : `
-  - approved = approved without changes
-  - approved-amended = approved with amendments or conditions
-  - not-supported = rejected or not supported
-  - deferred = deferred to a future meeting
-  - noted = noted or received (no vote required)`;
 
+  // ADR 0004: capture the RAW determination in council's own terms, not a forced
+  // committee-specific enum. The neutral lifecycle `stage` is derived from this
+  // later (db/lib/topics.js). "deferred" stays "deferred" — it is not a rejection.
   return `You are extracting resolution outcomes from Inner West Council ${committee.name} minutes.
 
 For each item section below, extract:
 - item_number: the integer from "Item N" in the heading
-- status: one of exactly: ${statuses}${statusHints}
+- outcome: the raw determination in the council's own terms, as a short lower-case string. Use the actual word the minutes use: "approved", "approved with amendments", "refused", "not supported", "deferred", "adopted", "endorsed", "noted", "withdrawn", "contract executed", etc. Null if the item was listed but no determination was recorded.
 - resolution: a plain-language one-sentence summary of what was decided, written for a resident. Include key details — what specifically was approved, rejected, or noted, any important conditions or amendments. E.g. "Approved — raised pedestrian crossing at Illawarra Rd/Wharf St to proceed."
 - works_start: ISO 8601 date (YYYY-MM-DD) if a specific construction or implementation start date is mentioned, otherwise null
 
@@ -698,23 +689,28 @@ async function getIngestedMeetingIds() {
   return new Set(rows.map(r => r.id));
 }
 
-// ─── normalise status for non-LTF committees ──────────────────────────────────
-function normaliseStatus(rawStatus, committeeId) {
-  const ltf = COMMITTEES[committeeId]?.slug === 'ltf';
-  if (ltf) return rawStatus; // already correct
-  // Map generic statuses to the topics.status CHECK constraint values
-  const map = {
-    'approved':          'forum-yes',
-    'approved-amended':  'forum-amended',
-    'not-supported':     'forum-no',
-    'deferred':          'forum-no',
-    'noted':             'on-agenda',
-    'on-agenda':         'on-agenda',
-    'forum-yes':         'forum-yes',
-    'forum-amended':     'forum-amended',
-    'forum-no':          'forum-no',
-  };
-  return map[rawStatus] || 'on-agenda';
+// ─── resolve an item's SUBJECT to a persistent topic (attach-or-create) ───────
+// ADR 0003: the canonical subject is the linking signal, and matching LEARNS. We
+// look the item's normalised subject up in topic_subjects (the learned alias store).
+//   hit  → attach this appearance to the known topic, no human prompt (this is how
+//          oversight trends to zero: a confirmed subject never needs reviewing again)
+//   miss → mint a new persistent topic and record an `auto` alias for it. The offline
+//          reconciliation pass (db/match.js) later proposes fuzzy/cross-type merges a
+//          human confirms; a confirmation upgrades the alias to source='human'.
+// Ingest itself only ever matches on EXACT normKey — no fuzzy AI guess is baked into
+// the source of truth here (a wrong link is a published falsehood).
+// Returns { id, key, isNew }. Does NOT write — the caller orders writes so the topic
+// row exists before the alias/decision rows that reference it (foreign keys).
+function resolveTopicId(subject, aliasMap, existingIds) {
+  const key = normKey(subject);
+  if (aliasMap.has(key)) return { id: aliasMap.get(key), key, isNew: false }; // attach
+
+  // new subject → mint a unique topic id, disambiguating slug collisions
+  let id = `topic-${slug(subject)}`;
+  if (existingIds.has(id)) { let n = 2; while (existingIds.has(`${id}-${n}`)) n++; id = `${id}-${n}`; }
+  existingIds.add(id);
+  aliasMap.set(key, id);
+  return { id, key, isNew: true };
 }
 
 // ─── write a meeting and its items to D1 ─────────────────────────────────────
@@ -724,7 +720,14 @@ async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPubli
   const minutesMap = {};
   for (const m of minutesItems) minutesMap[m.item_number] = m;
 
-  // Collect all statements to execute sequentially
+  // Load the learned alias store and existing topic state so we can attach to known
+  // topics and union place arrays without clobbering what earlier meetings recorded.
+  const aliasRows  = (await d1Query('SELECT subject_key, topic_id FROM topic_subjects'))[0]?.results || [];
+  const aliasMap   = new Map(aliasRows.map(r => [r.subject_key, r.topic_id]));
+  const topicRows  = (await d1Query('SELECT id, subject, type, headline, suburbs, streets, first_seen, last_seen, detail_page FROM topics'))[0]?.results || [];
+  const existingIds = new Set(topicRows.map(r => r.id));
+  const topicState = new Map(topicRows.map(r => [r.id, r]));
+
   const stmts = [];
 
   // Committee (INSERT OR IGNORE — idempotent)
@@ -756,47 +759,97 @@ async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPubli
     });
   }
 
-  // Topics, decisions, and images
+  // Each agenda item is ONE decision (this appearance) threaded onto a persistent topic.
+  const touchedTopics = new Set();
   for (const item of agendaItems) {
     const n = item.item_number;
-    const topicId = `topic-${mid}-${String(n).padStart(2, '0')}`;
     const decisionId = `${mid}-${String(n).padStart(2, '0')}`;
     const mins = minutesMap[n];
-    const rawStatus = mins ? mins.status : 'on-agenda';
-    const status = normaliseStatus(rawStatus, meeting.committee_site_id);
+    const outcome    = mins ? (mins.outcome || null) : null; // raw determination (ADR 0004)
     const resolution = mins ? mins.resolution : null;
     const worksStart = mins ? mins.works_start : null;
 
+    const subject = item.subject || item.headline || 'untitled';
+    const { id: topicId, key: subjectKey, isNew } = resolveTopicId(subject, aliasMap, existingIds);
+    touchedTopics.add(topicId);
+
+    // Topic FIRST (FKs: alias, decision and images all reference topics(id)).
+    // Upsert in place — never DELETE+INSERT (that would break child FKs on re-ingest).
+    // Union this appearance's places into the topic's running sets; let the LATEST
+    // meeting own the display subject/headline/type. stage + first/last_seen are
+    // recomputed from the full decision history after all writes land.
+    const prev = topicState.get(topicId) || {};
+    const mergeJson = (field, arr) => {
+      const s = new Set(JSON.parse(prev[field] || '[]'));
+      for (const v of (arr || [])) s.add(v);
+      return JSON.stringify([...s]);
+    };
+    const isLatest = !prev.last_seen || meeting.date >= prev.last_seen;
+    const next = {
+      id: topicId,
+      subject:  isLatest ? subject : (prev.subject || subject),
+      type:     isLatest ? item.type : (prev.type || item.type),
+      headline: isLatest ? item.headline : (prev.headline || item.headline),
+      suburbs:  mergeJson('suburbs', item.suburbs),
+      streets:  mergeJson('streets', item.streets),
+      detail_page: prev.detail_page || null,
+    };
+    topicState.set(topicId, { ...next, last_seen: isLatest ? meeting.date : prev.last_seen });
     stmts.push({
-      sql: `INSERT OR REPLACE INTO topics (id, type, headline, status, suburbs, streets)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-      params: [topicId, item.type, item.headline, status,
-               JSON.stringify(item.suburbs || []), JSON.stringify(item.streets || [])],
+      sql: `INSERT INTO topics (id, subject, type, headline, stage, suburbs, streets, detail_page, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, 'proposed', ?, ?, ?, NULL, NULL)
+            ON CONFLICT(id) DO UPDATE SET
+              subject = excluded.subject, type = excluded.type, headline = excluded.headline,
+              suburbs = excluded.suburbs, streets = excluded.streets, detail_page = excluded.detail_page`,
+      params: [next.id, next.subject, next.type, next.headline, next.suburbs, next.streets, next.detail_page],
     });
 
+    // Learned alias for a brand-new subject (source=auto; a human confirm upgrades it).
+    if (isNew) {
+      stmts.push({
+        sql: `INSERT OR IGNORE INTO topic_subjects (subject_key, topic_id, source, created_at) VALUES (?, ?, 'auto', ?)`,
+        params: [subjectKey, topicId, now],
+      });
+    }
+
+    // Decision: the per-appearance record (its own headline + raw outcome).
     stmts.push({
-      sql: `INSERT OR REPLACE INTO decisions (id, meeting_id, topic_id, item_number, resolution, works_start)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-      params: [decisionId, mid, topicId, n, resolution, worksStart || null],
+      sql: `INSERT OR REPLACE INTO decisions (id, meeting_id, topic_id, item_number, headline, resolution, outcome, works_start)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [decisionId, mid, topicId, n, item.headline, resolution, outcome, worksStart || null],
     });
 
-    // Store key images for this item
+    // Key images for this appearance hang off the topic.
     const keyImages = item.keyImageUrls || [];
     for (let seq = 0; seq < keyImages.length; seq++) {
       stmts.push({
         sql: `INSERT OR REPLACE INTO images (id, topic_id, url, sequence) VALUES (?, ?, ?, ?)`,
-        params: [`img-${topicId}-${String(seq).padStart(3, '0')}`, topicId, keyImages[seq], seq],
+        params: [`img-${decisionId}-${String(seq).padStart(3, '0')}`, topicId, keyImages[seq], seq],
       });
     }
   }
 
-  // Execute all statements (sequentially — D1 REST doesn't support true transactions)
+  // Execute all writes first (sequentially — D1 REST has no true transactions), so the
+  // recompute below sees this meeting's freshly-written decisions.
   for (const { sql, params } of stmts) {
     await d1Query(sql, params);
   }
 
+  // Now recompute each touched topic's first/last_seen and neutral stage FROM its full
+  // decision history (covers appearances written by earlier meetings AND this one).
+  for (const topicId of touchedTopics) {
+    const decs = (await d1Query(
+      `SELECT d.outcome, d.works_start, m.date
+         FROM decisions d JOIN meetings m ON m.id = d.meeting_id
+        WHERE d.topic_id = ?`, [topicId]))[0]?.results || [];
+    const dates = decs.map(d => d.date).filter(Boolean).sort();
+    await d1Query(
+      `UPDATE topics SET first_seen = ?, last_seen = ?, stage = ? WHERE id = ?`,
+      [dates[0] || null, dates[dates.length - 1] || null, deriveStage(decs), topicId]);
+  }
+
   const imageCount = agendaItems.reduce((n, it) => n + (it.keyImageUrls?.length || 0), 0);
-  console.log(`  wrote ${agendaItems.length} topics + decisions, ${imageCount} images to D1`);
+  console.log(`  wrote ${agendaItems.length} decisions across ${touchedTopics.size} topics, ${imageCount} images to D1`);
 }
 
 // ─── process one meeting ──────────────────────────────────────────────────────
@@ -832,11 +885,10 @@ async function processMeeting(meeting, client) {
     const items = await extractAgendaData(client, meeting.committee_site_id, sections);
     console.log(`  extracted ${items.length} items`);
 
-    // For minutes-only, every item is already resolved — mark as noted
-    for (const item of items) {
-      if (!item.status) item.status = 'on-agenda';
-    }
-
+    // Minutes-only committees (e.g. Public Forum): the extracted doc IS the minutes,
+    // but the agenda extractor doesn't emit an `outcome`, so these decisions land with
+    // outcome=null (stage defaults to proposed). Capturing their raw outcome is a known
+    // follow-up; for now they thread by subject like any other appearance.
     await writeMeetingToD1(meeting, items, [], true);
     return;
   }

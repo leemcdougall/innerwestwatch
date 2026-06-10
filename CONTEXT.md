@@ -36,21 +36,45 @@ Documents are tracked so the system knows what has been ingested and can detect 
 
 ## Topic
 
-A real-world issue that residents follow.
+A persistent real-world issue that residents follow. It **threads** many Decisions across meetings, item types, and committees — it is never collapsed into another row. The Local Transport Forum → Council ratification arc is a story we show, not a duplicate we hide. See ADR 0003.
 
-A Topic has a lifespan that may span multiple meetings and months or years. Its current status reflects where the issue stands in the real world right now — not what was on any particular agenda.
+A Topic has a lifespan that may span months or years. It carries:
+- a canonical **Subject** (see below) — the stable name and primary linking signal;
+- a **Stage** (see below) — where the issue stands right now, derived from its decisions;
+- a representative type (crossing, parking, latm, report, motion, event, …);
+- the **union** of suburbs and streets across all its decisions;
+- a current display headline (denormalised from its latest decision).
 
-Examples: "New raised crossing — Illawarra Rd at Wharf St", "Speed limit drop — Rozelle, Lilyfield, Ashfield, Haberfield".
+Examples: "Leichhardt Aquatic Centre Stage 2", "South Marrickville Flood Study", "Italian Festa road closures, Norton St".
 
-A Topic has a type (crossing, parking, speed, latm, event, etc.), one or more suburbs, one or more streets, and a list of linked Agenda Items.
+Many Decisions point to ONE Topic. The Topic carries current state; the Decisions are the evidence trail.
+
+---
+
+## Subject
+
+The canonical name of the issue — the stable thing that stays the same if the item returns to a later meeting (possibly at a different committee). AI-extracted at ingest, human-confirmable.
+
+Subject is the **primary linking signal** (ADR 0003): meeting date discriminates recurring-but-distinct instances (e.g. Italian Festa 2025 vs 2026, ~300 days apart); shared streets corroborate. A normalised form of the subject (lowercase, punctuation-stripped, stop-words removed, tokens sorted) is the key stored in the **Subject Alias** store.
 
 ---
 
 ## Decision
 
-A single appearance of a Topic at a specific Meeting — what was decided that day.
+A single appearance of a Topic at a specific Meeting — what was decided that day. Many Decisions per Topic.
 
-One Topic may have many Decisions over time as it is discussed, deferred, amended, and eventually ratified. Carries the resolution text and works start date. A Decision that has not yet been linked to a Topic has a null topicId — it is pending human confirmation.
+Each Decision carries its own per-appearance **headline** (plain-language summary), a raw **Outcome** (below), the resolution detail text, and a works-start date. Every Decision points to a Topic (the threading FK is not null).
+
+---
+
+## Stage and Outcome
+
+Committee-neutral status, modelled on two axes (ADR 0004). The old LTF-specific vocabulary (`forum-yes`, `works-coming`, …) is retired.
+
+**Stage** lives on the Topic — the lifecycle position a resident skims, derived from the most-advanced point any of its decisions reached:
+`proposed` · `deferred` · `decided` · `in-progress` · `completed`.
+
+**Outcome** lives on the Decision — the raw determination in the council's own terms: `approved`, `approved with amendments`, `refused`, `not supported`, `deferred`, `adopted`, `noted`, `contract executed`, etc. Null until a determination is recorded.
 
 ---
 
@@ -60,13 +84,17 @@ A way residents navigate into the site.
 
 Current entry points: by suburb, by street. Planned: by Topic (follow an ongoing issue). Entry points are open-ended — new ones will be added as the site grows. The data model must support flexible lookup by any combination of suburb, street, committee, or topic.
 
+**Street search crosses suburb boundaries by design.** A resident searching a street near a suburb border should see everything physically close to them, regardless of which suburb a given item filed it under (project vision). A topic matches a street/suburb filter if ANY of its threaded decisions touched that place.
+
 ---
 
 ## Ingestion
 
-The process of fetching a Document from infocouncil.biz, extracting structured data from it, and creating or updating Topics and Agenda Items.
+The process of fetching a Document from infocouncil.biz, extracting structured data from it (including the canonical **Subject** and raw **Outcome**), and writing a Decision threaded onto a persistent Topic.
 
-Ingestion is automated (scheduled scans detect new Documents) but may require human confirmation when linking a new Agenda Item to an existing Topic is ambiguous.
+Ingestion is automated and **attaches by subject**: a new item's normalised subject is looked up in the Subject Alias store. A hit threads the Decision onto the known Topic with no human prompt; a miss mints a new Topic and records an `auto` alias. Ingest only ever matches on an *exact* normalised subject — no fuzzy AI guess is baked into the source of truth. Fuzzy and cross-type links are proposed offline by the reconciliation pass and confirmed by a human (see Topic Linking).
+
+`db/ingest.js` is the pipeline; `db/lib/topics.js` holds the shared subject/stage primitives used by both ingest and reconciliation.
 
 ---
 
@@ -78,10 +106,13 @@ When starting a new session, run `gh issue list` to see what's open. When work i
 
 ---
 
-## Topic Linking
+## Topic Linking (threading)
 
-The process of identifying that two or more Decisions refer to the same real-world issue and consolidating them under one canonical Topic.
+The process of recognising that two or more Decisions refer to the same persistent issue and threading them onto one Topic. We **thread, never merge** — there is no hidden, merged-away row; there is one Topic with an ordered list of Decisions. See ADR 0003 (which supersedes the merge-based ADR 0002).
 
-Linking is done offline by a human using the deduplication tool (`db/dedupe.js`). The tool surfaces candidate pairs based on matching type, overlapping streets, and meeting dates within an 18-month window. The human chooses one of three dispositions per pair: merge (confirmed duplicate), dismiss once (suppress for 18 months), or recurring (permanently suppress — same streets, genuinely distinct program cycle).
+- **At ingest:** exact subject-alias match attaches automatically (above).
+- **Offline reconciliation (`db/match.js`):** clusters by subject (fuzzy: subset / Jaccard ≥ 0.6), splits genuinely distinct recurrences on a date gap (> 270 days), and surfaces street-corroborated cross-type near-misses (the Bunnings LATM ↔ event case) as a review queue. It does NOT auto-merge those — a wrong link is a published falsehood.
 
-A merged-away Topic has its `canonical_topic_id` set to point to the surviving canonical row. The API and frontend only show canonical Topics. See ADR 0002.
+## Subject Alias (learning, oversight → zero)
+
+The durable `topic_subjects` store maps a normalised subject → Topic. It is how human oversight **trends to zero**: every confirmed link is persisted as an alias (`source='human'`; matcher-created ones are `source='auto'`), so the same subject never needs reviewing twice. Each ingest hits more aliases and prompts less. (This replaces ADR 0002's `dismissed_once` 18-month resurfacing, which trended the wrong way by re-asking settled questions.)
