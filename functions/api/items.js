@@ -83,30 +83,39 @@ export async function onRequestGet({ request, env }) {
       return json([], 200);
     }
 
-    // ── Fetch every decision for the matched topics in one round-trip ─────────
+    // ── Fetch every decision for the matched topics ───────────────────────────
+    // D1 caps bound parameters per query (~100), so the IN (...) list is chunked.
+    // Without this, an unfiltered request (287 topics) overflows the limit and D1
+    // returns "too many SQL variables".
     const ids = topicRows.map(r => r.id);
-    const placeholders = ids.map(() => '?').join(',');
-    const decisionSQL = `
-      SELECT
-        d.id                                       AS id,
-        d.topic_id                                 AS topicId,
-        d.meeting_id                               AS meeting,
-        d.item_number                              AS item,
-        d.headline                                 AS headline,
-        d.outcome                                  AS outcome,
-        d.resolution                               AS resolution,
-        d.works_start                              AS worksStart,
-        m.date                                     AS date,
-        CASE WHEN m.minutes_published = 1
-             THEN m.date ELSE NULL END             AS minutesDate,
-        m.agenda_url                               AS agendaUrl,
-        m.minutes_url                              AS minutesUrl
-      FROM decisions d
-      JOIN meetings m ON m.id = d.meeting_id
-      WHERE d.topic_id IN (${placeholders})
-      ORDER BY m.date ASC, d.item_number
-    `;
-    const { results: decisionRows } = await env.DB.prepare(decisionSQL).bind(...ids).all();
+    const CHUNK = 90;
+    const decisionRows = [];
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const placeholders = slice.map(() => '?').join(',');
+      const decisionSQL = `
+        SELECT
+          d.id                                       AS id,
+          d.topic_id                                 AS topicId,
+          d.meeting_id                               AS meeting,
+          d.item_number                              AS item,
+          d.headline                                 AS headline,
+          d.outcome                                  AS outcome,
+          d.resolution                               AS resolution,
+          d.works_start                              AS worksStart,
+          m.date                                     AS date,
+          CASE WHEN m.minutes_published = 1
+               THEN m.date ELSE NULL END             AS minutesDate,
+          m.agenda_url                               AS agendaUrl,
+          m.minutes_url                              AS minutesUrl
+        FROM decisions d
+        JOIN meetings m ON m.id = d.meeting_id
+        WHERE d.topic_id IN (${placeholders})
+        ORDER BY m.date ASC, d.item_number
+      `;
+      const { results } = await env.DB.prepare(decisionSQL).bind(...slice).all();
+      decisionRows.push(...results);
+    }
 
     // group decisions under their topic
     const byTopic = new Map(ids.map(id => [id, []]));
