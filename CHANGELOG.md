@@ -30,6 +30,11 @@ The big rebuild of the topic layer. "Topic" as a persistent issue never actually
 - Known recurrences recovered: Leichhardt Aquatic Centre (10 decisions), South Marrickville flood study (4); Italian Festa 2025/2026 kept distinct; Bunnings LATM↔event surfaced for human review (not auto-merged).
 - `db/lib/topics.js` unit-tested (9/9). All scripts pass `node --check`.
 
+### Production deploy fixes (same day, after merge to main)
+- **D1 binding** — Git-integrated Pages ignored the `[[d1_databases]]` binding in `wrangler.toml`, so `env.DB` was undefined and `/api/items` returned `Cannot read properties of undefined (reading 'prepare')`. Fixed by adding `pages_build_output_dir = "."`, which makes Pages use `wrangler.toml` as its config source (binding now version-controlled, not a hidden dashboard setting).
+- **D1 param overflow** — unfiltered `/api/items` fetched all 287 topics then bound one parameter per topic id in a single `IN (...)`, overflowing D1's ~100 bound-parameter cap (`too many SQL variables`). Fixed by chunking the decision query into batches of 90.
+- Verified live: `GET /api/items` returns 287 topics; Leichhardt Aquatic Centre = `decided`, 10 decisions.
+
 ### Next
 - Human review pass of match.js cross-type suggestions (writes `source='human'` aliases).
 - Frontend rebuild on the threaded model.
