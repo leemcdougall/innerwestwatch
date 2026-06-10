@@ -3,42 +3,50 @@
  *
  * Cloudflare Pages Function — GET /api/items
  *
- * Returns agenda items in the same shape as data/items.json, so the
- * front-end can swap between the static JSON fallback and this live endpoint
- * without any transformation code.
+ * Serves the THREADED model (ADR 0003): a Topic is a persistent real-world issue,
+ * and many Decisions (one per meeting appearance) hang off it. The endpoint returns
+ * one object per Topic, each carrying its ordered decision history. This replaces the
+ * old flat one-row-per-item shape, which assumed topic==item (1:1) — no longer true.
  *
  * Query parameters (all optional, combinable):
- *   ?suburb=Marrickville        — case-insensitive suburb filter
- *   ?street=Illawarra+Rd        — case-insensitive street filter (repeatable)
+ *   ?suburb=Marrickville        — case-insensitive suburb filter (matches the topic's
+ *                                 UNION of suburbs across all its decisions)
+ *   ?street=Illawarra+Rd        — case-insensitive street filter, repeatable
  *
- * When no parameters are supplied, all items are returned.
+ * A street/suburb filter matches a topic if ANY of its threaded decisions touched
+ * that place — street search crosses suburb boundaries by design (project vision:
+ * "what's close to me", border residents). When no parameters are supplied, all
+ * topics are returned.
  *
- * Response shape per item:
+ * Response shape per topic:
  * {
- *   id, meeting, item, type, suburbs[], streets[],
- *   headline, status, meetingDate, minutesDate,
- *   resolution, worksStart, detailPage,
- *   agendaUrl, minutesUrl
+ *   id, subject, type, headline, stage,
+ *   suburbs[], streets[], firstSeen, lastSeen, detailPage,
+ *   decisions: [
+ *     { id, meeting, item, date, minutesDate, headline, outcome,
+ *       resolution, worksStart, agendaUrl, minutesUrl }
+ *   ]
  * }
  *
- * minutesDate is the meeting date when minutes_published=1, otherwise null.
+ * stage is the committee-neutral lifecycle on the topic (ADR 0004):
+ *   proposed | deferred | decided | in-progress | completed.
+ * outcome is the raw determination, per decision (approved, refused, adopted, …).
+ * minutesDate is a decision's meeting date when minutes_published=1, else null.
  *
- * CORS: Access-Control-Allow-Origin: * so the static pages can call this
- * endpoint cross-origin during local development.
+ * CORS: Access-Control-Allow-Origin: * so static pages can call this cross-origin.
  */
 
 export async function onRequestGet({ request, env }) {
   const url    = new URL(request.url);
   const params = url.searchParams;
 
-  // Collect filter values. street is repeatable (?street=X&street=Y).
   const suburbFilter  = params.get('suburb') || null;
   const streetFilters = params.getAll('street');
 
   try {
-    // ── Build WHERE clause ────────────────────────────────────────────────
-    // suburbs and streets are stored as JSON arrays in the topics table,
-    // e.g. '["Marrickville","Newtown"]'. LIKE '%"X"%' matches reliably.
+    // ── Which topics match the place filter? ──────────────────────────────────
+    // suburbs/streets are JSON arrays on the topic (the UNION across its decisions),
+    // e.g. '["Marrickville","Newtown"]'. LIKE '%"X"%' matches a whole array element.
     const whereClauses = [];
     const bindParams   = [];
 
@@ -50,81 +58,103 @@ export async function onRequestGet({ request, env }) {
       whereClauses.push(`LOWER(t.streets) LIKE LOWER(?)`);
       bindParams.push(`%"${street}"%`);
     }
+    const whereSQL = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    // Always exclude merged-away topic rows — canonical rows have canonical_topic_id IS NULL.
-    // See ADR 0002.
-    whereClauses.unshift('t.canonical_topic_id IS NULL');
+    // ── Fetch matching topics ─────────────────────────────────────────────────
+    const topicSQL = `
+      SELECT
+        t.id          AS id,
+        t.subject     AS subject,
+        t.type        AS type,
+        t.headline    AS headline,
+        t.stage       AS stage,
+        t.suburbs     AS suburbs_json,
+        t.streets     AS streets_json,
+        t.detail_page AS detailPage,
+        t.first_seen  AS firstSeen,
+        t.last_seen   AS lastSeen
+      FROM topics t
+      ${whereSQL}
+      ORDER BY t.last_seen DESC, t.subject
+    `;
+    const { results: topicRows } = await env.DB.prepare(topicSQL).bind(...bindParams).all();
 
-    const whereSQL = `WHERE ${whereClauses.join(' AND ')}`;
+    if (topicRows.length === 0) {
+      return json([], 200);
+    }
 
-    // ── Base query ────────────────────────────────────────────────────────
-    // decisions → topics → meetings
-    // agenda_url and minutes_url live directly on meetings in the new schema.
-    const baseSQL = `
+    // ── Fetch every decision for the matched topics in one round-trip ─────────
+    const ids = topicRows.map(r => r.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const decisionSQL = `
       SELECT
         d.id                                       AS id,
+        d.topic_id                                 AS topicId,
         d.meeting_id                               AS meeting,
         d.item_number                              AS item,
-        t.type                                     AS type,
-        t.headline                                 AS headline,
-        t.status                                   AS status,
-        m.date                                     AS meetingDate,
-        CASE WHEN m.minutes_published = 1
-             THEN m.date ELSE NULL END             AS minutesDate,
+        d.headline                                 AS headline,
+        d.outcome                                  AS outcome,
         d.resolution                               AS resolution,
         d.works_start                              AS worksStart,
-        t.suburbs                                  AS suburbs_json,
-        t.streets                                  AS streets_json,
+        m.date                                     AS date,
+        CASE WHEN m.minutes_published = 1
+             THEN m.date ELSE NULL END             AS minutesDate,
         m.agenda_url                               AS agendaUrl,
         m.minutes_url                              AS minutesUrl
       FROM decisions d
-      JOIN topics   t ON t.id = d.topic_id
       JOIN meetings m ON m.id = d.meeting_id
-      ${whereSQL}
-      ORDER BY m.date DESC, d.item_number
+      WHERE d.topic_id IN (${placeholders})
+      ORDER BY m.date ASC, d.item_number
     `;
+    const { results: decisionRows } = await env.DB.prepare(decisionSQL).bind(...ids).all();
 
-    const { results } = await env.DB.prepare(baseSQL).bind(...bindParams).all();
+    // group decisions under their topic
+    const byTopic = new Map(ids.map(id => [id, []]));
+    for (const r of decisionRows) {
+      byTopic.get(r.topicId)?.push({
+        id:         r.id,
+        meeting:    r.meeting,
+        item:       r.item,
+        date:       r.date,
+        minutesDate:r.minutesDate,
+        headline:   r.headline,
+        outcome:    r.outcome,
+        resolution: r.resolution,
+        worksStart: r.worksStart,
+        agendaUrl:  r.agendaUrl,
+        minutesUrl: r.minutesUrl,
+      });
+    }
 
-    // ── Shape results to match items.json ─────────────────────────────────
-    const items = results.map(row => ({
-      id:          row.id,
-      meeting:     row.meeting,
-      item:        row.item,
-      type:        row.type,
-      suburbs:     JSON.parse(row.suburbs_json || '[]'),
-      streets:     JSON.parse(row.streets_json || '[]'),
-      headline:    row.headline,
-      status:      row.status,
-      meetingDate: row.meetingDate,
-      minutesDate: row.minutesDate,
-      resolution:  row.resolution,
-      worksStart:  row.worksStart,
-      detailPage:  null,
-      agendaUrl:   row.agendaUrl,
-      minutesUrl:  row.minutesUrl,
+    const topics = topicRows.map(t => ({
+      id:        t.id,
+      subject:   t.subject,
+      type:      t.type,
+      headline:  t.headline,
+      stage:     t.stage,
+      suburbs:   JSON.parse(t.suburbs_json || '[]'),
+      streets:   JSON.parse(t.streets_json || '[]'),
+      firstSeen: t.firstSeen,
+      lastSeen:  t.lastSeen,
+      detailPage:t.detailPage,
+      decisions: byTopic.get(t.id) || [],
     }));
 
-    return new Response(JSON.stringify(items), {
-      status: 200,
-      headers: {
-        'Content-Type':                'application/json',
-        'Access-Control-Allow-Origin': '*',
-        // Cache for 60 seconds on Cloudflare's edge; stale-while-revalidate
-        // means browsers keep using the cached response while a fresh one loads.
-        'Cache-Control':               'public, max-age=60, stale-while-revalidate=300',
-      },
-    });
+    return json(topics, 200);
 
   } catch (err) {
-    // Surface the error in the response body so it is visible in the network tab.
-    // In production the static fallback in index.html will silently take over.
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: {
-        'Content-Type':                'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+    // Surface the error in the body so it is visible in the network tab.
+    return json({ error: err.message }, 500);
   }
+}
+
+function json(body, status) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type':                'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control':               'public, max-age=60, stale-while-revalidate=300',
+    },
+  });
 }

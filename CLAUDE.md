@@ -47,14 +47,19 @@ innerwestwatch/          ← git repo root
   data/
     items.json           ← historical record only (D1 is source of truth)
   db/
-    schema.sql           ← D1 schema (7 tables)
-    migrate.js           ← generates seed.sql from items.json
+    schema.sql           ← D1 schema (threaded topics + decisions + topic_subjects alias store)
+    ingest.js            ← ingestion pipeline; attaches-or-creates topics by subject
+    match.js             ← offline reconciliation / backfill (supersedes the removed dedupe.js)
+    lib/
+      topics.js          ← shared subject/stage primitives (used by ingest + match)
+    migrations/          ← 0001-topic-threading.sql, 0002-thread-backfill.sql (both applied)
+    migrate.js           ← legacy: generates seed.sql from items.json
     seed.sql             ← generated — do not edit by hand
   functions/
     api/
-      items.js           ← Worker: GET /api/items
+      items.js           ← Worker: GET /api/items (serves threaded topics)
   docs/
-    adr/                 ← architecture decision records
+    adr/                 ← architecture decision records (0003 threading, 0004 neutral status are current)
   meetings/
     ltf-18may2026/
       tempe-south/
