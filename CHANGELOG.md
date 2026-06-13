@@ -4,6 +4,32 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-13 — Milestone 6: comprehensive link pass over all 285 topics
+
+Exhaustive review of every topic to find links and touchpoints, building a human-confirmed base so future ingest can recognise how this council's issues connect. 8 agents clustered candidates by shared local streets and argued each to a recommendation; the 7 high-stakes calls (5 merges, 2 supersedes) were re-verified by Sonnet agents against the infocouncil source documents.
+
+### New relation model (ADR 0005, migrations 0004 + 0005, applied --remote)
+- `topic_relations` table (migration `0004`) holds non-merge connections: `parent-child`, `related`, `supersedes`. `merge` is deliberately not a relation kind — confirmed same-issue links go through threading.
+- Migration `0005` wrote **100 human-confirmed relations** (43 parent-child, 57 related). Source-verified reclassifications from the raw candidate set:
+  - **Australia St parklets**: merge → **parent-child** (Council resolution is the parent over the LTF traffic approval — same scheme, two governance steps).
+  - **Curtis/Darling crossing**: supersedes → **related** (confirmed two *different* crossings, Design Plan 10313 on Darling St vs 10390 on Curtis Rd).
+
+### No merges applied — every merge candidate hit a data error
+The verify pass found the same disease as St Peters: D1 item numbers that don't match the source agendas. All five merge candidates were rejected or routed to the ingest investigation:
+- **Robyn Webster** — item 30 on `C_19052026` is a Marion St notice of motion, not the sports centre.
+- **Centenary Park** — item 50 doesn't exist (the agenda ends at item 40).
+- **Renwick St fire** — June item 25 is the "29 Damun Inclusive Playground (Camperdown Park)" tender, not the fire matter (the supersedes candidate was dropped).
+- **Balmain/Wran** — May "Wran Square plaza" is stored as item 22, but item 22 is "Supporting Visual Artists and Writers"; the real plaza item is item 8. The May decision + its 5 images may belong to the wrong item, so the merge is unsafe until re-ingested.
+- **Investment** — "Investment report" mixes a property report (Feb item 17, real estate) with cash reports; needs a split, not a merge.
+
+These five join the St Peters parklands topics on the ingest data-quality investigation. First-round ingest clearly didn't go deep enough — item-number fidelity needs a second pass.
+
+### Artifacts
+- `review/links.html` — standalone review of all 106 candidate links (untracked, for Lee).
+- `docs/adr/0005-topic-relations.md` — the relation-model decision.
+
+---
+
 ## 2026-06-10 — Milestone 6: human review pass of cross-type link suggestions
 
 Reviewed the matcher's street-corroborated cross-type suggestions (separate topics sharing a suburb + 2+ streets) and confirmed/rejected each against the actual infocouncil source documents. Four sub-agents read the agendas/minutes in parallel so calls were grounded in the source text, not guessed from headlines — which mattered: my initial "strong match" guess on Curtis/Darling was wrong.
