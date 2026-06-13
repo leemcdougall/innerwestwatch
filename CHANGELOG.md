@@ -4,6 +4,50 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-13 — Milestone 6: comprehensive link pass over all 285 topics
+
+Exhaustive review of every topic to find links and touchpoints, building a human-confirmed base so future ingest can recognise how this council's issues connect. 8 agents clustered candidates by shared local streets and argued each to a recommendation; the 7 high-stakes calls (5 merges, 2 supersedes) were re-verified by Sonnet agents against the infocouncil source documents.
+
+### New relation model (ADR 0005, migrations 0004 + 0005, applied --remote)
+- `topic_relations` table (migration `0004`) holds non-merge connections: `parent-child`, `related`, `supersedes`. `merge` is deliberately not a relation kind — confirmed same-issue links go through threading.
+- Migration `0005` wrote **100 human-confirmed relations** (43 parent-child, 57 related). Source-verified reclassifications from the raw candidate set:
+  - **Australia St parklets**: merge → **parent-child** (Council resolution is the parent over the LTF traffic approval — same scheme, two governance steps).
+  - **Curtis/Darling crossing**: supersedes → **related** (confirmed two *different* crossings, Design Plan 10313 on Darling St vs 10390 on Curtis Rd).
+
+### No merges applied — every merge candidate hit a data error
+The verify pass found the same disease as St Peters: D1 item numbers that don't match the source agendas. All five merge candidates were rejected or routed to the ingest investigation:
+- **Robyn Webster** — item 30 on `C_19052026` is a Marion St notice of motion, not the sports centre.
+- **Centenary Park** — item 50 doesn't exist (the agenda ends at item 40).
+- **Renwick St fire** — June item 25 is the "29 Damun Inclusive Playground (Camperdown Park)" tender, not the fire matter (the supersedes candidate was dropped).
+- **Balmain/Wran** — May "Wran Square plaza" is stored as item 22, but item 22 is "Supporting Visual Artists and Writers"; the real plaza item is item 8. The May decision + its 5 images may belong to the wrong item, so the merge is unsafe until re-ingested.
+- **Investment** — "Investment report" mixes a property report (Feb item 17, real estate) with cash reports; needs a split, not a merge.
+
+These five join the St Peters parklands topics on the ingest data-quality investigation. First-round ingest clearly didn't go deep enough — item-number fidelity needs a second pass.
+
+### Artifacts
+- `review/links.html` — standalone review of all 106 candidate links (untracked, for Lee).
+- `docs/adr/0005-topic-relations.md` — the relation-model decision.
+
+---
+
+## 2026-06-10 — Milestone 6: human review pass of cross-type link suggestions
+
+Reviewed the matcher's street-corroborated cross-type suggestions (separate topics sharing a suburb + 2+ streets) and confirmed/rejected each against the actual infocouncil source documents. Four sub-agents read the agendas/minutes in parallel so calls were grounded in the source text, not guessed from headlines — which mattered: my initial "strong match" guess on Curtis/Darling was wrong.
+
+### Confirmed and applied (`db/migrations/0003-human-review-merges.sql`, applied --remote)
+- **Bunnings Tempe** — merged "Traffic calming works near Bunnings Tempe" (latm, 16 Feb, Item 13) + "Bunnings LATM temporary road closures" (event, 18 May, Item 4). The May agenda explicitly cites the Feb Item 13 approval; the closures construct the adopted design. Canonical = the LATM works topic; stage now `in-progress` (works_start 2026-07-06), span Feb–May.
+- **Unwins Bridge Rd, Tempe** — merged "Pedestrian safety review — Unwins Bridge Rd & Hillcrest St" (notice-of-motion, 17 Feb, Item 37) + "raised pedestrian crossing upgrade" (crossing, 15 Jun, Item 18). The Feb motion directed a review of this crossing and to report to the LTF within 3 months; the June item is that review. Canonical = the crossing topic; span Feb–Jun.
+- Each confirmed link repointed decisions+images, repointed its subject alias to the canonical topic and promoted it to `source='human'`, and dropped the orphan topic. Result: 287 → 285 topics, 0 orphan decisions/images/aliases, 2 human aliases.
+
+### Rejected (kept separate)
+- **Curtis Rd / Darling St, Balmain** — two *different* crossings on different legs of the intersection (Design Plan 10390 on Curtis Rd vs 10313 on Darling St; different parking impacts; B adds roundabout works; no cross-reference).
+- **St Peters / WestConnex parklands** — not threaded. The three D1 topics do **not** match the real 16 Jun 2026 Council agenda (real Item 16 is a contamination *report*, Items 24/30 are unrelated confidential items). Looks like an ingest extraction/numbering error. Flagged as a separate investigation task — not a threading decision.
+
+### Known limitation surfaced
+- `deriveStage` (max rank across decisions) reads the Unwins Feb motion's "approved" outcome as `decided`, even though the crossing works themselves are only proposed. Not overridden (the next ingest run would recompute the same value); the fix belongs in the staging logic, tracked for later.
+
+---
+
 ## 2026-06-10 — Persistent topics by subject threading + committee-neutral status
 
 The big rebuild of the topic layer. "Topic" as a persistent issue never actually existed in the data — ingest minted one isolated topic per item (357 items = 357 topics), and the old dedupe tool only linked same-type, shared-street pairs. Asking "what's the latest on the Leichhardt Aquatic Centre?" returned 10 disconnected rows all reading "on-agenda". Now it returns one topic, `stage=decided`, with a 10-decision evidence trail Feb→Jun 2026.
