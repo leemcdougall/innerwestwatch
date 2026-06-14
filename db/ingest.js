@@ -276,6 +276,12 @@ async function fetchMeetingList(committeeId, year, month, vsd) {
     return {
       prefix, dateStr, docId, isExtra,
       date: `${yr}-${mon}-${day}`,
+      // The in-document item reference code for THIS meeting, e.g. "C0526" for a
+      // 19 May 2026 Council meeting, "LTF0526" for an LTF meeting. infocouncil
+      // agendas embed cross-references to OTHER meetings' items (deferred items,
+      // "previously considered at C0426 Item 5"), so the splitter must filter on
+      // this prefix to keep only the current meeting's own items. See splitHtmlByItems.
+      refPrefix: `${prefix}${mon}${yr.slice(2)}`,
       meetingId: `${committee.slug}-${day}${monthNames[parseInt(mon, 10) - 1]}${yr}${isExtra ? '-extra' : ''}`,
       htmUrl: `https://innerwest.infocouncil.biz/${path.replace(/_WEB\.htm$/i, '.HTM')}`,
     };
@@ -295,6 +301,7 @@ async function fetchMeetingList(committeeId, year, month, vsd) {
         agendaId: meta.docId,
         agendaUrl: null,          // no agenda for minutes-only committees
         minutesUrl: meta.htmUrl,
+        refPrefix: meta.refPrefix,
         isExtra: meta.isExtra,
         minutesOnly: true,
       });
@@ -319,6 +326,7 @@ async function fetchMeetingList(committeeId, year, month, vsd) {
         agendaId: meta.docId,
         agendaUrl: meta.htmUrl,
         minutesUrl,
+        refPrefix: meta.refPrefix,
         isExtra: meta.isExtra,
         minutesOnly: false,
       });
@@ -433,23 +441,42 @@ async function fetchImageBase64(url) {
 // Large council documents repeat item reference codes in the table of contents,
 // headers, and cross-references. We deduplicate by item number and keep only the
 // largest section per item number (which is the actual item content, not a TOC stub).
+//
+// CRITICAL: infocouncil agendas embed cross-references to OTHER meetings' items —
+// a deferred item carries its prior reference (e.g. a 19 May 2026 / C0526 agenda
+// cites "C0426(1) Item 5" for the April meeting it was held over from). Each ref
+// code is `<COMMITTEE><MMYY>(<n>) Item <N>`, so the MMYY part identifies which
+// meeting an item belongs to. Without filtering on the CURRENT meeting's prefix,
+// those cross-refs leak in as phantom items (April's Items 41-46 appearing under a
+// May meeting that only has 40) and, via the "longest section wins" rule, can even
+// overwrite a real item's content with a same-numbered item from another meeting.
+// `refPrefix` (e.g. "C0526") restricts the split to this meeting's own items.
 const MAX_IMAGES_PER_ITEM = 6;
 
-function splitHtmlByItems(html, docUrl) {
+function splitHtmlByItems(html, docUrl, refPrefix) {
   // Pattern covers: LTF0526(1) Item 1, C0326(1) Item 2, ILPP0426(1) Item 3, etc.
   const ITEM_BOUNDARY = /(?=[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+)/gi;
   const base = docUrl.replace(/\/[^/]+\.HTM$/i, '/');
+
+  // Only keep sections whose reference code matches THIS meeting's prefix. The match
+  // is case-insensitive and anchored to the start of the ref code so "C0526" never
+  // also matches an unrelated committee. If no refPrefix is supplied (legacy callers),
+  // fall back to the old number-only behaviour so nothing silently drops to empty.
+  const prefixRe = refPrefix
+    ? new RegExp(`^${refPrefix}\\(\\d+\\)\\s+Item\\s+(\\d+)`, 'i')
+    : /^[A-Z]+\d{4}\(\d+\)\s+Item\s+(\d+)/i;
 
   // Split raw HTML at every item boundary occurrence
   const rawParts = html.split(ITEM_BOUNDARY).filter(p =>
     /[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+/i.test(p)
   );
 
-  // Group by item number — keep the longest section per item (the actual content, not TOC stubs)
+  // Group by item number — keep the longest section per item (the actual content, not
+  // TOC stubs), but only for sections belonging to the current meeting (prefixRe).
   const byItemNum = new Map();
   for (const rawSection of rawParts) {
-    const m = rawSection.match(/[A-Z]+\d{4}\(\d+\)\s+Item\s+(\d+)/i);
-    if (!m) continue;
+    const m = rawSection.match(prefixRe);
+    if (!m) continue; // a cross-reference to another meeting — skip it
     const itemNum = parseInt(m[1], 10);
     const existing = byItemNum.get(itemNum);
     if (!existing || rawSection.length > existing.length) {
@@ -868,7 +895,7 @@ async function processMeeting(meeting, client) {
       return;
     }
 
-    const sections = splitHtmlByItems(minutesHtml, meeting.minutesUrl);
+    const sections = splitHtmlByItems(minutesHtml, meeting.minutesUrl, meeting.refPrefix);
     console.log(`  found ${sections.length} item sections`);
     if (sections.length === 0) {
       // Public Forum minutes may not follow the standard Item N pattern —
@@ -903,7 +930,7 @@ async function processMeeting(meeting, client) {
     return;
   }
 
-  const itemSections = splitHtmlByItems(agendaHtml, meeting.agendaUrl);
+  const itemSections = splitHtmlByItems(agendaHtml, meeting.agendaUrl, meeting.refPrefix);
   console.log(`  found ${itemSections.length} item sections`);
   if (itemSections.length === 0) {
     console.error('  no items found — check HTML structure');
@@ -920,7 +947,7 @@ async function processMeeting(meeting, client) {
     try {
       console.log(`  fetching minutes: ${meeting.minutesUrl}`);
       const minutesHtml = await fetchHtml(meeting.minutesUrl);
-      const minutesSections = splitHtmlByItems(minutesHtml, meeting.minutesUrl);
+      const minutesSections = splitHtmlByItems(minutesHtml, meeting.minutesUrl, meeting.refPrefix);
       if (minutesSections.length > 0) {
         console.log('  extracting minutes data with Claude...');
         minutesItems = await extractMinutesData(client, meeting.committee_site_id, minutesSections);
