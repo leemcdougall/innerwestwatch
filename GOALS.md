@@ -71,7 +71,7 @@ Modules are independent. Each can be built and shipped without the others being 
 
 *Fetches HTML from infocouncil.biz, extracts Subject + neutral Outcome with Claude, threads each Decision onto a persistent Topic via the alias store.*
 
-- `db/ingest.js` — auto-discovery pipeline; attaches-or-creates by subject (exact alias lookup), recomputes topic stage + union streets/suburbs from the full decision history
+- `db/ingest.js` — auto-discovery pipeline; attaches-or-creates by subject (exact alias lookup), recomputes topic stage + union streets/suburbs from the full decision history; prunes re-slug orphan topics (+ their dangling aliases/images) at the end of every run
 - GitHub Actions workflow `.github/workflows/ingest.yml` — runs Mondays 9am Sydney
 - Credentials live in `.env` (gitignored) + GitHub secrets: `ANTHROPIC_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DATABASE_ID`, `CLOUDFLARE_D1_TOKEN`
 
@@ -97,6 +97,7 @@ Modules are independent. Each can be built and shipped without the others being 
 - Backfill applied 2026-06-10: 357 decisions → 287 persistent topics (45 thread 2+ decisions), 287 learned aliases
 - Confirmed links persist to `topic_subjects` so oversight trends to zero (ADR 0003)
 - Superseded `db/dedupe.js` (merge-based, ADR 0002) — removed
+- `db/apply-relations.js` — re-materializes the 100 subject-keyed human links (`db/human-relations.json`) into `topic_relations` against current topic ids after any reingest; resolves via the alias store + fuzzy fallback and reports unresolved subjects for review (ADR 0006). `topic_relations` is a derived projection, not a source.
 
 ### 5. Document tools — make source material readable
 
@@ -119,7 +120,7 @@ Modules are independent. Each can be built and shipped without the others being 
 | 3 | Ingestion producing decisions from all committee agendas | ✅ Done 2026-06-09 | Milestone 2 |
 | 4 | Persistent topics by subject threading + neutral status (ADR 0003/0004): schema, match.js, ingest rewrite, API | ✅ Done 2026-06-10 | Milestone 3 |
 | 5 | Backfill — thread the 357 existing decisions into real topics | ✅ Done 2026-06-10 | Milestone 4 |
-| 6 | Comprehensive link/touchpoint pass over all 285 topics — 100 human-confirmed `topic_relations` (parent/child, related) applied; all merge candidates routed to the ingest data-quality fix | ✅ Done 2026-06-13 | Milestone 5 |
+| 6 | Comprehensive link/touchpoint pass over all 285 topics — 100 human-confirmed links, now subject-keyed (`db/human-relations.json`) and re-materialized into `topic_relations` by `db/apply-relations.js` after each reingest (ADR 0006); all merge candidates routed to the ingest data-quality fix | ✅ Done 2026-06-13 (relations apply step 2026-06-21) | Milestone 5 |
 | 7 | Frontend rebuild on the threaded model (topic pages, street/suburb search crossing boundaries) | ❌ Not started | Milestone 5 |
 | 8 | Document tools (image conversion, PDF extraction) | ⏳ Partial — images ingested, not shown | Milestone 3 |
 | 9 | Custom domain | ❌ Not started | Any time |

@@ -4,6 +4,48 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-21 (session 10) — Re-runnable relations apply step; orphan-prune folded into ingest
+
+Built the piece ADR 0006 named as next: a re-runnable step that materializes the 100
+subject-keyed human links back into `topic_relations` against the *current* topic ids, so a
+human never re-confirms a link after a reingest.
+
+### New: `db/apply-relations.js`
+- Reads `db/human-relations.json` (100 links keyed by subject pair). For each subject, resolves
+  to the current topic id: **exact `normKey` hit in the `topic_subjects` alias store**, then a
+  **fuzzy `sameSubject` fallback** (highest-Jaccard match; an ambiguous tie is refused, not
+  guessed — a wrong link is a published falsehood). Reuses the shared primitives in
+  `db/lib/topics.js` so subjects normalize identically to ingest/match.
+- Emits idempotent `INSERT OR IGNORE INTO topic_relations`. Directionality per migration 0004:
+  `parent-child`/`supersedes` keep A→B order; `related` is stored with `topic_a < topic_b` by id
+  so the row is stable across id churn. `created_at` is preserved from the JSON (the original
+  human-decision date, not now). Batches of 16 rows (D1 caps bound params at 100; 16×6 = 96).
+- Flags: `--dry-run` (default, prints + writes nothing), `--apply` (additive), `--rebuild`
+  (delete `source='human'` rows then re-insert — guarded to abort if zero resolve, never wipes
+  the table on a resolver bug), `--self-test` (5 resolver unit checks via `node:assert`, no deps).
+- Prints an **unresolved report** — the deduped set of subjects that no longer resolve. That set
+  is the only thing a human reviews and it shrinks as aliases get confirmed (trend-to-zero,
+  applied to relations).
+
+### Applied to live D1
+- First apply against the session-9 reingest's re-slugged 600-topic set: **38 of 100 resolved**
+  (26 parent-child + 12 related), 2 self-collapsed (both subjects now thread to one topic), 60
+  unresolved across 54 unique subjects. Verified: idempotent re-run inserts 0; 0 dangling topic
+  refs. The low count is expected, not a bug — it's the first pass against a heavily re-slugged
+  set with a thin alias store (≈1 alias/topic), and the fuzzy bar stays high on purpose. The 54
+  unresolved subjects are the human-review backlog; confirming them as aliases lifts the next run.
+- Migration `0005` (id-keyed populate) is **not** run — stale ids, superseded by this script.
+
+### Ingest hygiene: orphan-prune folded in (`db/ingest.js`)
+- `pruneOrphans()` now runs at the end of every ingest (full-scan and single-meeting). Deletes
+  topics with no decisions (the re-slug orphan), then the aliases and images that would dangle —
+  so the alias store can't resolve a subject to a dead topic. The orphan check is global, so
+  partial/single-committee runs never delete a topic that still has decisions elsewhere.
+  `topic_relations` is left to `apply-relations.js --rebuild` (it's a derived projection).
+- Previously this lived only in a hand-run migration, so reingests accumulated stale topics.
+
+---
+
 ## 2026-06-21 (session 9) — Fix the ingest regression that wiped LTF/FMAC; restore coverage; verify fidelity
 
 Worked the backend-to-90% plan. The headline find: the "cross-ref-leak fix" (branch `claude/fix-ingest-cross-ref-leak`, never merged) had silently broken every multi-letter committee, which is what actually lost the LTF and FMAC data on 14 June — not a partial run.
