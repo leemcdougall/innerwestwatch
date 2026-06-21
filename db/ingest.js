@@ -455,7 +455,17 @@ const MAX_IMAGES_PER_ITEM = 6;
 
 function splitHtmlByItems(html, docUrl, refPrefix) {
   // Pattern covers: LTF0526(1) Item 1, C0326(1) Item 2, ILPP0426(1) Item 3, etc.
-  const ITEM_BOUNDARY = /(?=[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+)/gi;
+  //
+  // The negative lookbehind `(?<![A-Z])` is load-bearing for MULTI-LETTER committee
+  // prefixes (LTF, ILPP, FMACC, …). Without it, the greedy `[A-Z]+` satisfies the
+  // lookahead at every consecutive letter of the prefix — for "LTF0526" the boundary
+  // fires before L, T AND F — so String.split inserts three adjacent split points and
+  // the content section ends up starting at the LAST letter ("F0526(1) Item 1"), with
+  // the "LT" shaved off. Single-letter "C" (Council) is immune, which is why Council
+  // ingested fine while the strict per-meeting refPrefix filter below silently dropped
+  // every multi-letter committee to zero items. Anchoring the split to a non-letter
+  // boundary makes each section start at the true prefix start so refPrefix can match.
+  const ITEM_BOUNDARY = /(?<![A-Z])(?=[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+)/gi;
   const base = docUrl.replace(/\/[^/]+\.HTM$/i, '/');
 
   // Only keep sections whose reference code matches THIS meeting's prefix. The match
@@ -570,6 +580,12 @@ Return a JSON array, one object per item, in item number order. No commentary, j
 // ─── Claude API: extract structured data from agenda items (with images) ──────
 // Batches items so no single API call exceeds Claude's 100-image limit.
 const MAX_IMAGES_PER_CALL = 80; // leave headroom under Claude's 100-image limit
+const MAX_ITEMS_PER_CALL  = 20; // cap items per call so JSON output never truncates at max_tokens
+// Claude's HTTP request body cap is ~32 MB and base64 image data dominates it. A handful
+// of 1.5 MB TGS plan scans (each ~2 MB once base64-encoded) blows that limit long before
+// the 80-image COUNT cap — the ltf-18may2026 Tempe LATM agenda 413'd (request_too_large)
+// with only 17 items. Budget well under 32 MB so a heavy-image batch always splits first.
+const MAX_REQUEST_BYTES = 18 * 1024 * 1024;
 
 async function extractAgendaData(client, committeeId, itemSections) {
   // Fetch all images in parallel first
@@ -588,18 +604,32 @@ async function extractAgendaData(client, committeeId, itemSections) {
   const totalImages = sectionsWithImages.reduce((n, s) => n + s.fetchedImages.length, 0);
   if (totalImages > 0) console.log(`  loaded ${totalImages} images for vision`);
 
-  // Batch items so total images per call stays under the limit
+  // Batch items so each call stays under BOTH the image limit AND a per-call item
+  // cap. Council agendas can carry 50+ items; with one JSON object per item, a single
+  // call easily overruns max_tokens and returns truncated (invalid) JSON. Capping items
+  // per batch keeps every response well within the token budget.
+  // Estimated request bytes a section contributes: its base64 image payload plus the
+  // (capped) text. Image bytes dominate; text is negligible but counted for honesty.
+  const sectionBytes = s =>
+    s.fetchedImages.reduce((n, img) => n + img.base64.length, 0) + (s.text ? s.text.length : 0);
+
   const batches = [];
-  let current = [], currentImgCount = 0;
+  let current = [], currentImgCount = 0, currentBytes = 0;
   for (const section of sectionsWithImages) {
     const imgCount = section.fetchedImages.length;
-    if (current.length > 0 && currentImgCount + imgCount > MAX_IMAGES_PER_CALL) {
+    const bytes = sectionBytes(section);
+    const wouldExceedImages = currentImgCount + imgCount > MAX_IMAGES_PER_CALL;
+    const wouldExceedItems  = current.length >= MAX_ITEMS_PER_CALL;
+    const wouldExceedBytes  = currentBytes + bytes > MAX_REQUEST_BYTES;
+    if (current.length > 0 && (wouldExceedImages || wouldExceedItems || wouldExceedBytes)) {
       batches.push(current);
       current = [];
       currentImgCount = 0;
+      currentBytes = 0;
     }
     current.push(section);
     currentImgCount += imgCount;
+    currentBytes += bytes;
   }
   if (current.length > 0) batches.push(current);
 
@@ -620,7 +650,7 @@ async function extractAgendaData(client, committeeId, itemSections) {
 
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: 'user', content }],
     });
 
@@ -1053,12 +1083,24 @@ async function main() {
   // Process newest first so D1 has the most current data quickly
   toProcess.sort((a, b) => b.date.localeCompare(a.date));
 
+  const failures = [];
   for (const meeting of toProcess) {
-    await processMeeting(meeting, client);
+    // Isolate each meeting: one bad agenda (e.g. a malformed Claude JSON response)
+    // must not abort the whole run and leave D1 half-populated. Record and continue.
+    try {
+      await processMeeting(meeting, client);
+    } catch (err) {
+      console.error(`  ERROR processing ${meeting.id}: ${err.message} — skipping`);
+      failures.push({ id: meeting.id, error: err.message });
+    }
     // Polite delay between meetings to avoid hammering either server
     await sleep(1000);
   }
 
+  if (failures.length) {
+    console.log(`\n${failures.length} meeting(s) failed:`);
+    for (const f of failures) console.log(`  - ${f.id}: ${f.error}`);
+  }
   console.log('\ndone.');
 }
 
