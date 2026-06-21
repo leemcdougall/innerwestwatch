@@ -1037,6 +1037,34 @@ async function auditPortal(vsd, unmatchedLinks) {
   }
 }
 
+// ─── prune orphan topics ──────────────────────────────────────────────────────
+// A re-extract can re-phrase a subject, which re-slugs its topic id. The decisions
+// move to the new id (attach-or-create via the alias store), leaving the OLD topic
+// with no decisions pointing at it — an orphan. Run once at the end of an ingest so
+// reingests don't accumulate stale topics until someone hand-runs the cleanup.
+//
+// Order matters (D1 doesn't enforce foreign keys): drop the orphan topics first, then
+// the learned aliases and images that now reference a topic id that no longer exists —
+// otherwise the alias store would resolve a subject to a dead topic. topic_relations is
+// NOT pruned here: it is a derived projection rebuilt by db/apply-relations.js --rebuild
+// (ADR 0006), which re-resolves every link against the current topic ids.
+async function pruneOrphans() {
+  const topics = await d1Query(
+    'DELETE FROM topics WHERE id NOT IN (SELECT topic_id FROM decisions)'
+  );
+  const aliases = await d1Query(
+    'DELETE FROM topic_subjects WHERE topic_id NOT IN (SELECT id FROM topics)'
+  );
+  const imgs = await d1Query(
+    'DELETE FROM images WHERE topic_id NOT IN (SELECT id FROM topics)'
+  );
+  const n = r => r[0]?.meta?.changes ?? 0;
+  const pruned = n(topics);
+  if (pruned || n(aliases) || n(imgs)) {
+    console.log(`pruned ${pruned} orphan topic(s), ${n(aliases)} alias(es), ${n(imgs)} image(s)`);
+  }
+}
+
 // ─── main ─────────────────────────────────────────────────────────────────────
 async function main() {
   const required = ['ANTHROPIC_API_KEY', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_DATABASE_ID', 'CLOUDFLARE_D1_TOKEN'];
@@ -1063,6 +1091,7 @@ async function main() {
       process.exit(1);
     }
     await processMeeting(target, client);
+    await pruneOrphans();   // a re-extract may have orphaned the old slug of a topic
     console.log('\ndone.');
     return;
   }
@@ -1101,6 +1130,7 @@ async function main() {
     console.log(`\n${failures.length} meeting(s) failed:`);
     for (const f of failures) console.log(`  - ${f.id}: ${f.error}`);
   }
+  await pruneOrphans();   // drop topics whose subject got re-slugged this run
   console.log('\ndone.');
 }
 
