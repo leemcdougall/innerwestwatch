@@ -4,6 +4,35 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-21 (session 9) — Fix the ingest regression that wiped LTF/FMAC; restore coverage; verify fidelity
+
+Worked the backend-to-90% plan. The headline find: the "cross-ref-leak fix" that shipped on this branch (commit 9cbc43e) had silently broken every multi-letter committee, which is what actually lost the LTF and FMAC data on 14 June — not a partial run.
+
+### Root cause (diagnosed against live source agendas)
+- 9cbc43e added a strict per-meeting `refPrefix` filter (`^LTF0526(...)`) to `splitHtmlByItems`. That exposed a latent bug in the item-boundary split: the greedy `[A-Z]+` satisfied the lookahead at **every** letter of a multi-letter prefix, so `String.split` fired before L, T **and** F of "LTF0526" and each content section started at the last letter (`F0526(1) Item 1`). The strict filter then matched nothing → **0 items for every multi-letter committee** (LTF, FMACC, ILPP…). Single-letter "C" (Council) was immune, which is why only Council survived 14 June.
+- The flagship `ltf-18may2026` had a second failure: 17 image-heavy items in one request exceeded Claude's ~32 MB body cap → `413 request_too_large`. The existing caps were on item/image **count**, not bytes.
+
+### Fixes (commit 0978008 + follow-ups)
+- `db/ingest.js` `ITEM_BOUNDARY`: anchor the split with a negative lookbehind `(?<![A-Z])` so it fires only at the true start of the ref code. LTF/FMAC extract again.
+- `db/ingest.js`: batch by request **bytes** (`MAX_REQUEST_BYTES` 18 MB), not just image/item counts. The Tempe LATM agenda now splits into 3 batches and writes all 17 decisions.
+- Kept the in-flight fidelity work this branch carried (20-item-per-call cap + `max_tokens` 8192 to stop truncated-JSON item mislabeling; per-meeting try/catch isolation so one bad agenda can't abort a run and silently drop later committees).
+- `db/match.js`: drop the `slice(0,20)` cap on link-suggestion printing.
+- Reverted the stray regenerated `db/migrations/0002-thread-backfill.sql` (an applied migration must not change).
+
+### Corrective reingest + verification
+- Backed up live D1, then ran `node db/ingest.js --months 12`. Coverage restored: **council 14 / ltf 10 / fmac 4 / public-forum 5 = 33 meetings, 651 decisions, 600 topics, 0 orphans.** All 14 committees are scanned every run; the other 10 genuinely have no meetings in the window (acceptable — see GOALS north star).
+- **Item-number fidelity confirmed fixed.** All 6 session-7 mismatches now match the live source agendas: St Peters (Jun item 16), Robyn Webster (May 10), Centenary Park (May 5, no phantom item 50), Renwick fire (May 25), Wran plaza (May 8), Investment split (Feb 17 property + 26 cash). Verified against raw `C0526`/`C0626` ref codes, not just D1 headlines.
+
+### Relations preserved, not re-materialized (ADR 0005)
+- The 100 Milestone-6 `topic_relations` are keyed by topic id — the one thing reingest churns — so they were wiped. Rescued all 100 into **`db/human-relations.json`**, keyed by **subject pair** (slug-immune), 0 unresolved. Materializing back into D1 is deferred until the data stabilizes / the frontend needs them (relations aren't served by the API yet). The re-runnable `subject → current topic id` apply step is the next relation task.
+
+### Schema + housekeeping
+- Added `db/migrations/0003-topic-relations.sql` (the table existed in live D1 but never in the repo; migrations 0004/0005 from an old branch never landed). Applied (IF NOT EXISTS, no-op on live).
+- New **ADR 0005** documents the subject-keyed relations decision; notes legacy `merge_decisions`/`topic_merge_log` (ADR 0002 era) as drop candidates.
+- Gitignored `backups/` and `review/` (large, regenerable; the human work was rescued into `db/human-relations.json` first).
+
+---
+
 ## 2026-06-21 — Backend status review + handoff for the push to "90%"
 
 Orientation session after a ~2-week gap. No code or schema changes. Audited the live backend and wrote a handoff so the next session can plan the work to get the data layer to ~90% before the frontend rebuild.

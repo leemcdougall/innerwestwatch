@@ -119,7 +119,7 @@ Modules are independent. Each can be built and shipped without the others being 
 | 3 | Ingestion producing decisions from all committee agendas | ✅ Done 2026-06-09 | Milestone 2 |
 | 4 | Persistent topics by subject threading + neutral status (ADR 0003/0004): schema, match.js, ingest rewrite, API | ✅ Done 2026-06-10 | Milestone 3 |
 | 5 | Backfill — thread the 357 existing decisions into real topics | ✅ Done 2026-06-10 | Milestone 4 |
-| 6 | Human review pass of match.js cross-type suggestions (writes `human` aliases) | ❌ Next | Milestone 5 |
+| 6 | Human review pass of match.js cross-type suggestions → 100 confirmed `topic_relations` | ✅ Done 2026-06-13 (relations preserved subject-keyed in `db/human-relations.json`, ADR 0005) | Milestone 5 |
 | 7 | Frontend rebuild on the threaded model (topic pages, street/suburb search crossing boundaries) | ❌ Not started | Milestone 5 |
 | 8 | Document tools (image conversion, PDF extraction) | ⏳ Partial — images ingested, not shown | Milestone 3 |
 | 9 | Custom domain | ❌ Not started | Any time |
