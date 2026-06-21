@@ -4,6 +4,27 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-21 — Backend status review + handoff for the push to "90%"
+
+Orientation session after a ~2-week gap. No code or schema changes. Audited the live backend and wrote a handoff so the next session can plan the work to get the data layer to ~90% before the frontend rebuild.
+
+### What we found (verified against live D1)
+- 350 topics / 368 decisions / 350 aliases. Stage split: decided 161 / proposed ~165 / in-progress 17 / deferred 7.
+- Only **3 of 14 committees** have data: council (10 meetings, 9 with minutes), public-forum (4), ltf (1). Needs verifying — real, or a dropped reingest?
+- Working tree is dirty and unexplained: `db/match.js` (suggestion display cap removed), `db/ingest.js` (the committed cross-ref fix), and ⚠️ a **regenerated `db/migrations/0002-thread-backfill.sql`** (topic ids/subjects rewritten ~2026-06-15 — an already-applied migration shouldn't change). Untracked `backups/` (pre-reingest dump 2026-06-14 + topic_relations dump/reapply) and `review/` (match.js HTML output). Left untouched — Lee couldn't speak to them, so the next session investigates before committing/deleting anything.
+- Branch `claude/fix-ingest-cross-ref-leak` (commit 9cbc43e, cross-ref-leak fix) is built but **not merged**.
+- 🔴 **Regression found:** `topic_relations` = 0 in live D1. The 100 human-confirmed relations from Milestone 6 (2026-06-13) were wiped by a ~2026-06-14 reingest (D1 grew 285→350 topics) and never reapplied. `backups/topic_relations-reapply.sql` is the unran reapply script. Reapplying it (after re-checking topic ids) is the next session's first job.
+- Reconfirmed the still-open **ingest item-number fidelity bug** from session 7 (6+ places where stored item numbers don't match source agendas); unknown whether the 6-14 reingest fixed it.
+
+### Decisions
+- Backend before frontend: Milestone 7 (frontend rebuild) stays deferred. Target is data/ingest correctness first, with a final polish pass once we're in a good spot.
+- Working-tree artifacts left as-is pending investigation (no blind commit/delete of a regenerated migration).
+
+### Handoff
+- `/tmp/handoff-backend-to-90.md` — full open-thread list and next-session prompt (not in repo; OS temp dir).
+
+---
+
 ## 2026-06-10 — Persistent topics by subject threading + committee-neutral status
 
 The big rebuild of the topic layer. "Topic" as a persistent issue never actually existed in the data — ingest minted one isolated topic per item (357 items = 357 topics), and the old dedupe tool only linked same-type, shared-street pairs. Asking "what's the latest on the Leichhardt Aquatic Centre?" returned 10 disconnected rows all reading "on-agenda". Now it returns one topic, `stage=decided`, with a 10-decision evidence trail Feb→Jun 2026.
