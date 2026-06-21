@@ -4,6 +4,32 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-21 (session 9) — Fix the ingest regression that wiped LTF/FMAC; restore coverage; verify fidelity
+
+Worked the backend-to-90% plan. The headline find: the "cross-ref-leak fix" (branch `claude/fix-ingest-cross-ref-leak`, never merged) had silently broken every multi-letter committee, which is what actually lost the LTF and FMAC data on 14 June — not a partial run.
+
+### Root cause (diagnosed against live source agendas)
+- The cross-ref fix added a strict per-meeting `refPrefix` filter (`^LTF0526(...)`) to `splitHtmlByItems`. That exposed a latent bug in the item-boundary split: the greedy `[A-Z]+` satisfied the lookahead at **every** letter of a multi-letter prefix, so `String.split` fired before L, T **and** F of "LTF0526" and each content section started at the last letter (`F0526(1) Item 1`). The strict filter then matched nothing → **0 items for every multi-letter committee** (LTF, FMACC, ILPP…). Single-letter "C" (Council) was immune, which is why only Council survived 14 June.
+- The flagship `ltf-18may2026` had a second failure: 17 image-heavy items in one request exceeded Claude's ~32 MB body cap → `413 request_too_large`. The existing caps were on item/image **count**, not bytes.
+
+### Fixes (db/ingest.js)
+- `ITEM_BOUNDARY`: anchor the split with a negative lookbehind `(?<![A-Z])` so it fires only at the true start of the ref code. LTF/FMAC extract again.
+- Batch by request **bytes** (`MAX_REQUEST_BYTES` 18 MB), not just image/item counts. The Tempe LATM agenda now splits into 3 batches and writes all 17 decisions.
+- Folds in the cross-ref `refPrefix` filter (keeps another meeting's deferred items from leaking in) plus the in-flight fidelity work: 20-item-per-call cap + `max_tokens` 8192 (stops truncated-JSON item mislabeling) and per-meeting try/catch isolation so one bad agenda can't abort a run and silently drop later committees.
+- `db/match.js`: drop the `slice(0,20)` cap on link-suggestion printing.
+
+### Corrective reingest + verification
+- Backed up live D1, then ran `node db/ingest.js --months 12`. Coverage restored: **council 14 / ltf 10 / fmac 4 / public-forum 5 = 33 meetings, 651 decisions, 600 topics, 0 orphans.** All 14 committees are scanned every run; the other 10 genuinely have no meetings in the window.
+- **Item-number fidelity confirmed fixed.** All 6 session-7 mismatches now match the live source agendas (verified against raw `C0526`/`C0626` ref codes, not just D1 headlines): St Peters (Jun 16), Robyn Webster (May 10), Centenary Park (May 5, no phantom item 50), Renwick fire (May 25), Wran plaza (May 8), Investment split (Feb 17 property + 26 cash).
+
+### Relations: preserved subject-keyed, not re-materialized (ADR 0006)
+- The 100 Milestone-6 `topic_relations` key on topic id — the one thing reingest churns — so the 14 June reingest wiped them (0 rows) and migration 0005's id-keyed `INSERT`s no longer resolve. Rescued all 100 into **`db/human-relations.json`**, keyed by **subject pair** (slug-immune), 0 unresolved. Materializing back into D1 is deferred until the data stabilizes / the frontend needs them (relations aren't served by the API yet). ADR 0006 makes the table *derived* and the subject-keyed JSON the *source*; the re-runnable `subject → current topic id` apply step is the next relation task.
+
+### Housekeeping
+- Gitignored `backups/` and `review/` (large, regenerable; the human work was rescued into `db/human-relations.json` first). Reverted a stray regenerated `db/migrations/0002-thread-backfill.sql`. Noted legacy `merge_decisions`/`topic_merge_log` as drop candidates.
+
+---
+
 ## 2026-06-13 — Milestone 6: comprehensive link pass over all 285 topics
 
 Exhaustive review of every topic to find links and touchpoints, building a human-confirmed base so future ingest can recognise how this council's issues connect. 8 agents clustered candidates by shared local streets and argued each to a recommendation; the 7 high-stakes calls (5 merges, 2 supersedes) were re-verified by Sonnet agents against the infocouncil source documents.

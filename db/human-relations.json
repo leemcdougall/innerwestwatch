@@ -1,0 +1,813 @@
+{
+  "_meta": {
+    "description": "Human-confirmed cross-topic links (Milestone 6, 2026-06-13). Keyed by SUBJECT, not topic id, so they survive reingest slug churn. Re-materialize into topic_relations by resolving each subject -> current topic id via the topic_subjects alias store.",
+    "derived_from": [
+      "backups/counciltracker-pre-reingest-20260614-184643.sql",
+      "backups/topic_relations-reapply.sql"
+    ],
+    "rescued_on": "2026-06-21",
+    "count": 100
+  },
+  "relations": [
+    {
+      "subjectA": "Accessible parklets, Australia Street Newtown",
+      "subjectB": "Temporary parklets, Australia St",
+      "kind": "parent-child",
+      "note": "Council resolution (parent) over LTF traffic approval (child) — same Australia St parklets",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Curtis Road & Darling Street crossing, Balmain",
+      "subjectB": "Darling St & Curtis Rd raised crossing and roundabout",
+      "kind": "related",
+      "note": "Same Curtis/Darling intersection, two different crossings (DP 10313 vs 10390) — not supersedes",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Old Canterbury Rd & Edward St traffic signals",
+      "subjectB": "Safety measures for GreenWay impact, Weston Street, Dulwich Hill",
+      "kind": "related",
+      "note": "Old Canterbury Rd & Edward St traffic signals ~ Safety measures for GreenWay impact, Weston Street, Dulwich Hill",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Safety measures for GreenWay impact, Weston Street, Dulwich Hill",
+      "subjectB": "Weston Street Dulwich Hill traffic calming",
+      "kind": "related",
+      "note": "Safety measures for GreenWay impact, Weston Street, Dulwich Hill ~ Weston Street Dulwich Hill traffic calming",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Charlotte Street staircase improvements",
+      "subjectB": "Victoria Road repair",
+      "kind": "related",
+      "note": "Charlotte Street staircase improvements ~ Victoria Road repair",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Fishers Reserve & Palace continuous footpath",
+      "subjectB": "Terminus & Palace St raised crossing",
+      "kind": "related",
+      "note": "Fishers Reserve & Palace continuous footpath ~ Terminus & Palace St raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Resident parking scheme — Leichhardt West Stage 2 and 3",
+      "subjectB": "Resident parking scheme, Lords Rd & Davies St, Leichhardt",
+      "kind": "related",
+      "note": "Resident parking scheme — Leichhardt West Stage 2 and 3 ~ Resident parking scheme, Lords Rd & Davies St, Leichhardt",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Christmas 2026 decorations and Light Up Fest",
+      "subjectB": "Christmas decorations expansion",
+      "kind": "related",
+      "note": "Christmas 2026 decorations and Light Up Fest ~ Christmas decorations expansion",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Christmas 2026 decorations and Light Up Fest",
+      "subjectB": "Christmas in Inner West",
+      "kind": "related",
+      "note": "Christmas 2026 decorations and Light Up Fest ~ Christmas in Inner West",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Christmas 2026 decorations and Light Up Fest",
+      "subjectB": "Christmas festivity initiatives and Light Up competition",
+      "kind": "related",
+      "note": "Christmas 2026 decorations and Light Up Fest ~ Christmas festivity initiatives and Light Up competition",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Dive-in cinema and live music — aquatic centre activation",
+      "subjectB": "Dive-in movies at aquatic centres",
+      "kind": "related",
+      "note": "Dive-in cinema and live music — aquatic centre activation ~ Dive-in movies at aquatic centres",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Dive-in cinema and live music events at aquatic centres",
+      "subjectB": "Dive-in movies at aquatic centres",
+      "kind": "related",
+      "note": "Dive-in cinema and live music events at aquatic centres ~ Dive-in movies at aquatic centres",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Dive-in cinema and summer music sessions at aquatic centres",
+      "subjectB": "Dive-in movies at aquatic centres",
+      "kind": "related",
+      "note": "Dive-in cinema and summer music sessions at aquatic centres ~ Dive-in movies at aquatic centres",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Halloween competition and road safety enhancements",
+      "subjectB": "Halloween promotion and safety initiatives",
+      "kind": "related",
+      "note": "Halloween competition and road safety enhancements ~ Halloween promotion and safety initiatives",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Italian Festa road closures, Norton St",
+      "subjectB": "Norton St road closure, Italian Festa",
+      "kind": "related",
+      "note": "Italian Festa road closures, Norton St ~ Norton St road closure, Italian Festa",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "FOGO food waste service expansion",
+      "subjectB": "FOGO service expansion to multi-unit dwellings",
+      "kind": "related",
+      "note": "FOGO food waste service expansion ~ FOGO service expansion to multi-unit dwellings",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Return and Earn container collection at council venues",
+      "subjectB": "Return and Earn support",
+      "kind": "related",
+      "note": "Return and Earn container collection at council venues ~ Return and Earn support",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Defence of democratic rights and peaceful protest",
+      "subjectB": "Democratic rights and protest policing",
+      "kind": "related",
+      "note": "Defence of democratic rights and peaceful protest ~ Democratic rights and protest policing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Nuclear weapons treaty endorsement",
+      "subjectB": "Treaty on Prohibition of Nuclear Weapons support",
+      "kind": "related",
+      "note": "Nuclear weapons treaty endorsement ~ Treaty on Prohibition of Nuclear Weapons support",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "King Street Crawl music festival",
+      "subjectB": "King Street Special Entertainment Precinct",
+      "kind": "related",
+      "note": "King Street Crawl music festival ~ King Street Special Entertainment Precinct",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "King Street entertainment precinct coordination with City of Sydney",
+      "subjectB": "King Street Special Entertainment Precinct",
+      "kind": "related",
+      "note": "King Street entertainment precinct coordination with City of Sydney ~ King Street Special Entertainment Precinct",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Our Fairer Future Stage 2, Parramatta Road rezoning",
+      "subjectB": "Our Fairer Future zoning progress",
+      "kind": "related",
+      "note": "Our Fairer Future Stage 2, Parramatta Road rezoning ~ Our Fairer Future zoning progress",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Community Recycling Centres operation and accessibility",
+      "subjectB": "Community recycling centres review",
+      "kind": "related",
+      "note": "Community Recycling Centres operation and accessibility ~ Community recycling centres review",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Metro activation plan — Marrickville and Dulwich Hill stations",
+      "subjectB": "Metro station activations plan",
+      "kind": "related",
+      "note": "Metro activation plan — Marrickville and Dulwich Hill stations ~ Metro station activations plan",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Metro opening celebration — Sydenham, Marrickville, Dulwich Hill",
+      "subjectB": "Metro station activations plan",
+      "kind": "related",
+      "note": "Metro opening celebration — Sydenham, Marrickville, Dulwich Hill ~ Metro station activations plan",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "LGBTQ+ business support program",
+      "subjectB": "LGBTQ+ businesses and venues support",
+      "kind": "related",
+      "note": "LGBTQ+ business support program ~ LGBTQ+ businesses and venues support",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Seniors Morning Tea expansion",
+      "subjectB": "Seniors morning teas",
+      "kind": "related",
+      "note": "Seniors Morning Tea expansion ~ Seniors morning teas",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local transport forum — raised crossings and cycleways",
+      "subjectB": "Local Transport Forum recommendations",
+      "kind": "related",
+      "note": "Local transport forum — raised crossings and cycleways ~ Local Transport Forum recommendations",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Local transport forum — raised crossings and cycleways",
+      "kind": "related",
+      "note": "Local Transport Forum May 2026 ~ Local transport forum — raised crossings and cycleways",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Design Excellence LEP amendment",
+      "subjectB": "Design excellence planning rules",
+      "kind": "related",
+      "note": "Design Excellence LEP amendment ~ Design excellence planning rules",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Artist and writer affordable workspace support",
+      "subjectB": "Creative spaces for artists",
+      "kind": "related",
+      "note": "Artist and writer affordable workspace support ~ Creative spaces for artists",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "40km/h speed limits",
+      "subjectB": "Speed limit reduction to 40km/h",
+      "kind": "related",
+      "note": "40km/h speed limits ~ Speed limit reduction to 40km/h",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Speed limit reduction, Haberfield, Rozelle & Ashfield",
+      "subjectB": "Speed limit reduction to 40km/h",
+      "kind": "related",
+      "note": "Speed limit reduction, Haberfield, Rozelle & Ashfield ~ Speed limit reduction to 40km/h",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Extended pool hours during LPAC renovation",
+      "subjectB": "Leichhardt Aquatic Centre Stage 2",
+      "kind": "related",
+      "note": "Extended pool hours during LPAC renovation ~ Leichhardt Aquatic Centre Stage 2",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Illawarra Road pipeline — Hill & Thornley Streets",
+      "subjectB": "South Marrickville flood study",
+      "kind": "related",
+      "note": "Illawarra Road pipeline — Hill & Thornley Streets ~ South Marrickville flood study",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Dulwich Hill Village Masterplan",
+      "subjectB": "South Dulwich Hill traffic review",
+      "kind": "related",
+      "note": "Dulwich Hill Village Masterplan ~ South Dulwich Hill traffic review",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Old Canterbury Rd & Edward St traffic signals",
+      "subjectB": "Weston Street Dulwich Hill traffic calming",
+      "kind": "related",
+      "note": "Old Canterbury Rd & Edward St traffic signals ~ Weston Street Dulwich Hill traffic calming",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Curtis Road & Darling Street crossing, Balmain",
+      "subjectB": "Speed cushion and no stopping — Curtis Road, Balmain",
+      "kind": "related",
+      "note": "Curtis Road & Darling Street crossing, Balmain ~ Speed cushion and no stopping — Curtis Road, Balmain",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Darling St & Curtis Rd raised crossing and roundabout",
+      "subjectB": "Speed cushion and no stopping — Curtis Road, Balmain",
+      "kind": "related",
+      "note": "Darling St & Curtis Rd raised crossing and roundabout ~ Speed cushion and no stopping — Curtis Road, Balmain",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Lackey Street Summer Hill event-ready space",
+      "subjectB": "Summer Hill Social event road closure",
+      "kind": "related",
+      "note": "Lackey Street Summer Hill event-ready space ~ Summer Hill Social event road closure",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Drynan Street & Prospect Road crossing, Summer Hill",
+      "subjectB": "Prospect Rd between Norton & Smith raised crossing",
+      "kind": "related",
+      "note": "Drynan Street & Prospect Road crossing, Summer Hill ~ Prospect Rd between Norton & Smith raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Hurlstone Ave from Prospect Rd No Left Turn ban",
+      "subjectB": "Prospect Rd between Norton & Smith raised crossing",
+      "kind": "related",
+      "note": "Hurlstone Ave from Prospect Rd No Left Turn ban ~ Prospect Rd between Norton & Smith raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Drynan Street & Prospect Road crossing, Summer Hill",
+      "subjectB": "Hurlstone Ave from Prospect Rd No Left Turn ban",
+      "kind": "related",
+      "note": "Drynan Street & Prospect Road crossing, Summer Hill ~ Hurlstone Ave from Prospect Rd No Left Turn ban",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Enmore Walk of Fame",
+      "subjectB": "King Street Crawl music festival",
+      "kind": "related",
+      "note": "Enmore Walk of Fame ~ King Street Crawl music festival",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "King Street Crawl music festival",
+      "subjectB": "King Street entertainment precinct coordination with City of Sydney",
+      "kind": "related",
+      "note": "King Street Crawl music festival ~ King Street entertainment precinct coordination with City of Sydney",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Robert & Queen road safety improvements",
+      "subjectB": "Traffic safety study — Queen, Armstrong, Harland and Hardy Streets, Ashfield",
+      "kind": "related",
+      "note": "Robert & Queen road safety improvements ~ Traffic safety study — Queen, Armstrong, Harland and Hardy Streets, Ashfield",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Robert & Queen road safety improvements",
+      "subjectB": "Victoria Street & Robert Street crossing, Ashfield",
+      "kind": "related",
+      "note": "Robert & Queen road safety improvements ~ Victoria Street & Robert Street crossing, Ashfield",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Wells St at Commodore & John Sts raised thresholds",
+      "subjectB": "Wells St & King St raised footpath",
+      "kind": "related",
+      "note": "Wells St at Commodore & John Sts raised thresholds ~ Wells St & King St raised footpath",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Car share parking fees",
+      "subjectB": "Seniors workshops on vehicle ownership transition",
+      "kind": "related",
+      "note": "Car share parking fees ~ Seniors workshops on vehicle ownership transition",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Audit committee governance and risk monitoring",
+      "subjectB": "Audit Risk and Improvement Committee minutes",
+      "kind": "related",
+      "note": "Audit committee governance and risk monitoring ~ Audit Risk and Improvement Committee minutes",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Pecuniary interest disclosure",
+      "subjectB": "Pecuniary interest returns",
+      "kind": "related",
+      "note": "Pecuniary interest disclosure ~ Pecuniary interest returns",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Centenary Park cricket nets upgrade",
+      "subjectB": "Centenary Park sports ground upgrade",
+      "kind": "related",
+      "note": "Centenary Park cricket nets upgrade ~ Centenary Park sports ground upgrade",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Fire and Rescue NSW safety inspections",
+      "subjectB": "Fire safety reports",
+      "kind": "related",
+      "note": "Fire and Rescue NSW safety inspections ~ Fire safety reports",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Flood Management Advisory Committee recommendations",
+      "subjectB": "South Marrickville flood study",
+      "kind": "related",
+      "note": "Flood Management Advisory Committee recommendations ~ South Marrickville flood study",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Flood Management Advisory Committee recommendations",
+      "subjectB": "Illawarra Road pipeline — Hill & Thornley Streets",
+      "kind": "related",
+      "note": "Flood Management Advisory Committee recommendations ~ Illawarra Road pipeline — Hill & Thornley Streets",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Flood Management Advisory Committee recommendations",
+      "subjectB": "Osgood Avenue stormwater drainage",
+      "kind": "related",
+      "note": "Flood Management Advisory Committee recommendations ~ Osgood Avenue stormwater drainage",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Murray St raised crossing with islands, Marrickville",
+      "subjectB": "Smidmore St & Edinburgh Rd no stopping zone",
+      "kind": "related",
+      "note": "Murray St raised crossing with islands, Marrickville ~ Smidmore St & Edinburgh Rd no stopping zone",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Shaw St & Belgrave St STOP control and kerb extensions",
+      "subjectB": "Shaw St north of Oxford St raised crossing",
+      "kind": "related",
+      "note": "Shaw St & Belgrave St STOP control and kerb extensions ~ Shaw St north of Oxford St raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Arthur St & Illawarra Rd raised footpath",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Arthur St & Illawarra Rd raised footpath",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "College Street bicycles excepted one-way",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ College Street bicycles excepted one-way",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Fishers Reserve & Palace continuous footpath",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Fishers Reserve & Palace continuous footpath",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Hardie Ave raised crossing",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Hardie Ave raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Kingston & Deakin pedestrian refuge islands",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Kingston & Deakin pedestrian refuge islands",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Robert & Queen road safety improvements",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Robert & Queen road safety improvements",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Terminus & Palace St raised crossing",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Terminus & Palace St raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Thornley St & Cary St kerb extension",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Thornley St & Cary St kerb extension",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Wardell Road Marrickville raised crossing",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Wardell Road Marrickville raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Wells St & King St raised footpath",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Wells St & King St raised footpath",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "No parking restriction, laneway",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ No parking restriction, laneway",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "GoGet car share spaces, Inner West",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ GoGet car share spaces, Inner West",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Dickson & King St refuge island",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Dickson & King St refuge island",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Traffic calming works near Bunnings Tempe",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Traffic calming works near Bunnings Tempe",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "St Peters Station parking study",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ St Peters Station parking study",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum recommendations",
+      "subjectB": "Resident parking scheme, Mackey Park precinct, Marrickville",
+      "kind": "parent-child",
+      "note": "Local Transport Forum recommendations ~ Resident parking scheme, Mackey Park precinct, Marrickville",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Darling St & Curtis Rd raised crossing and roundabout",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Darling St & Curtis Rd raised crossing and roundabout",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Nelson Lane no parking zone extension",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Nelson Lane no parking zone extension",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Warburton St & Illawarra Rd kerb blister",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Warburton St & Illawarra Rd kerb blister",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Illawarra Rd & Wharf St crossing",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Illawarra Rd & Wharf St crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Illawarra Rd & Grove St raised crossing",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Illawarra Rd & Grove St raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Smidmore St & Edinburgh Rd no stopping zone",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Smidmore St & Edinburgh Rd no stopping zone",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Nowranie St & Smith St kerb extensions",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Nowranie St & Smith St kerb extensions",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Hardy St & Mount St raised crossing and kerb extensions",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Hardy St & Mount St raised crossing and kerb extensions",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Allen St raised crossing",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Allen St raised crossing",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Resident parking scheme, Mackey Park precinct, Marrickville",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Resident parking scheme, Mackey Park precinct, Marrickville",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "No parking zone, Little Brighton St, Petersham",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ No parking zone, Little Brighton St, Petersham",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local Transport Forum May 2026",
+      "subjectB": "Resident parking scheme, Lords Rd & Davies St, Leichhardt",
+      "kind": "parent-child",
+      "note": "Local Transport Forum May 2026 ~ Resident parking scheme, Lords Rd & Davies St, Leichhardt",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local transport forum — raised crossings and cycleways",
+      "subjectB": "Marrickville Rd & Sydney St crossing and cycleway",
+      "kind": "parent-child",
+      "note": "Local transport forum — raised crossings and cycleways ~ Marrickville Rd & Sydney St crossing and cycleway",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local transport forum — raised crossings and cycleways",
+      "subjectB": "Seaview St & Yeo Ave raised threshold",
+      "kind": "parent-child",
+      "note": "Local transport forum — raised crossings and cycleways ~ Seaview St & Yeo Ave raised threshold",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local transport forum — raised crossings and cycleways",
+      "subjectB": "McRae St & Livingstone Rd kerb blister and extension",
+      "kind": "parent-child",
+      "note": "Local transport forum — raised crossings and cycleways ~ McRae St & Livingstone Rd kerb blister and extension",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local transport forum — raised crossings and cycleways",
+      "subjectB": "Lilyfield Road cycleway",
+      "kind": "parent-child",
+      "note": "Local transport forum — raised crossings and cycleways ~ Lilyfield Road cycleway",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local transport forum — raised crossings and cycleways",
+      "subjectB": "McGill St & Old Canterbury Rd kerb extensions",
+      "kind": "parent-child",
+      "note": "Local transport forum — raised crossings and cycleways ~ McGill St & Old Canterbury Rd kerb extensions",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local transport forum — raised crossings and cycleways",
+      "subjectB": "Norton St & Lapish Ave zebra crossing with kerb extension",
+      "kind": "parent-child",
+      "note": "Local transport forum — raised crossings and cycleways ~ Norton St & Lapish Ave zebra crossing with kerb extension",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Local transport forum — raised crossings and cycleways",
+      "subjectB": "Temporary parklets, Australia St",
+      "kind": "parent-child",
+      "note": "Local transport forum — raised crossings and cycleways ~ Temporary parklets, Australia St",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Car share parking fees",
+      "subjectB": "GoGet car share spaces, Inner West",
+      "kind": "parent-child",
+      "note": "Car share parking fees ~ GoGet car share spaces, Inner West",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Car share parking fees",
+      "subjectB": "Flexicar car share parking spaces",
+      "kind": "parent-child",
+      "note": "Car share parking fees ~ Flexicar car share parking spaces",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "South Marrickville flood study",
+      "subjectB": "Osgood Avenue stormwater drainage",
+      "kind": "parent-child",
+      "note": "South Marrickville flood study ~ Osgood Avenue stormwater drainage",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Business Roundtable Action Plans",
+      "subjectB": "Crystal Street business improvements, Petersham",
+      "kind": "parent-child",
+      "note": "Business Roundtable Action Plans ~ Crystal Street business improvements, Petersham",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Public EV chargers expansion plan",
+      "subjectB": "EV kerbside charging locations",
+      "kind": "parent-child",
+      "note": "Public EV chargers expansion plan ~ EV kerbside charging locations",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Fire safety reports",
+      "subjectB": "Fire safety orders — Renwick St, Leichhardt",
+      "kind": "parent-child",
+      "note": "Fire safety reports ~ Fire safety orders — Renwick St, Leichhardt",
+      "source": "human",
+      "created_at": "2026-06-13"
+    },
+    {
+      "subjectA": "Parklets and on-road dining",
+      "subjectB": "Accessible parklets, Australia Street Newtown",
+      "kind": "parent-child",
+      "note": "Parklets and on-road dining ~ Accessible parklets, Australia Street Newtown",
+      "source": "human",
+      "created_at": "2026-06-13"
+    }
+  ]
+}
