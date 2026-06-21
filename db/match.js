@@ -268,7 +268,7 @@ async function main() {
   // Street-corroborated cross-type near-misses for human confirmation (not auto-merged).
   if (suggestions.length) {
     console.log(`\n${suggestions.length} street-corroborated link suggestion(s) to review (NOT auto-merged):`);
-    for (const s of suggestions.slice(0, 20)) {
+    for (const s of suggestions) {
       console.log(`  ? "${s.a.subject}" (${s.a.type}) <-> "${s.b.subject}" (${s.b.type})`);
       console.log(`      shared streets: ${s.streets.join(', ')}`);
     }
