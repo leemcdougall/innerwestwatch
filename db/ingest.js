@@ -276,6 +276,12 @@ async function fetchMeetingList(committeeId, year, month, vsd) {
     return {
       prefix, dateStr, docId, isExtra,
       date: `${yr}-${mon}-${day}`,
+      // The in-document item reference code for THIS meeting, e.g. "C0526" for a
+      // 19 May 2026 Council meeting, "LTF0526" for an LTF meeting. infocouncil
+      // agendas embed cross-references to OTHER meetings' items (deferred items,
+      // "previously considered at C0426 Item 5"), so the splitter must filter on
+      // this prefix to keep only the current meeting's own items. See splitHtmlByItems.
+      refPrefix: `${prefix}${mon}${yr.slice(2)}`,
       meetingId: `${committee.slug}-${day}${monthNames[parseInt(mon, 10) - 1]}${yr}${isExtra ? '-extra' : ''}`,
       htmUrl: `https://innerwest.infocouncil.biz/${path.replace(/_WEB\.htm$/i, '.HTM')}`,
     };
@@ -295,6 +301,7 @@ async function fetchMeetingList(committeeId, year, month, vsd) {
         agendaId: meta.docId,
         agendaUrl: null,          // no agenda for minutes-only committees
         minutesUrl: meta.htmUrl,
+        refPrefix: meta.refPrefix,
         isExtra: meta.isExtra,
         minutesOnly: true,
       });
@@ -319,6 +326,7 @@ async function fetchMeetingList(committeeId, year, month, vsd) {
         agendaId: meta.docId,
         agendaUrl: meta.htmUrl,
         minutesUrl,
+        refPrefix: meta.refPrefix,
         isExtra: meta.isExtra,
         minutesOnly: false,
       });
@@ -433,23 +441,52 @@ async function fetchImageBase64(url) {
 // Large council documents repeat item reference codes in the table of contents,
 // headers, and cross-references. We deduplicate by item number and keep only the
 // largest section per item number (which is the actual item content, not a TOC stub).
+//
+// CRITICAL: infocouncil agendas embed cross-references to OTHER meetings' items —
+// a deferred item carries its prior reference (e.g. a 19 May 2026 / C0526 agenda
+// cites "C0426(1) Item 5" for the April meeting it was held over from). Each ref
+// code is `<COMMITTEE><MMYY>(<n>) Item <N>`, so the MMYY part identifies which
+// meeting an item belongs to. Without filtering on the CURRENT meeting's prefix,
+// those cross-refs leak in as phantom items (April's Items 41-46 appearing under a
+// May meeting that only has 40) and, via the "longest section wins" rule, can even
+// overwrite a real item's content with a same-numbered item from another meeting.
+// `refPrefix` (e.g. "C0526") restricts the split to this meeting's own items.
 const MAX_IMAGES_PER_ITEM = 6;
 
-function splitHtmlByItems(html, docUrl) {
+function splitHtmlByItems(html, docUrl, refPrefix) {
   // Pattern covers: LTF0526(1) Item 1, C0326(1) Item 2, ILPP0426(1) Item 3, etc.
-  const ITEM_BOUNDARY = /(?=[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+)/gi;
+  //
+  // The negative lookbehind `(?<![A-Z])` is load-bearing for MULTI-LETTER committee
+  // prefixes (LTF, ILPP, FMACC, …). Without it, the greedy `[A-Z]+` satisfies the
+  // lookahead at every consecutive letter of the prefix — for "LTF0526" the boundary
+  // fires before L, T AND F — so String.split inserts three adjacent split points and
+  // the content section ends up starting at the LAST letter ("F0526(1) Item 1"), with
+  // the "LT" shaved off. Single-letter "C" (Council) is immune, which is why Council
+  // ingested fine while the strict per-meeting refPrefix filter below silently dropped
+  // every multi-letter committee to zero items. Anchoring the split to a non-letter
+  // boundary makes each section start at the true prefix start so refPrefix can match.
+  const ITEM_BOUNDARY = /(?<![A-Z])(?=[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+)/gi;
   const base = docUrl.replace(/\/[^/]+\.HTM$/i, '/');
+
+  // Only keep sections whose reference code matches THIS meeting's prefix. The match
+  // is case-insensitive and anchored to the start of the ref code so "C0526" never
+  // also matches an unrelated committee. If no refPrefix is supplied (legacy callers),
+  // fall back to the old number-only behaviour so nothing silently drops to empty.
+  const prefixRe = refPrefix
+    ? new RegExp(`^${refPrefix}\\(\\d+\\)\\s+Item\\s+(\\d+)`, 'i')
+    : /^[A-Z]+\d{4}\(\d+\)\s+Item\s+(\d+)/i;
 
   // Split raw HTML at every item boundary occurrence
   const rawParts = html.split(ITEM_BOUNDARY).filter(p =>
     /[A-Z]+\d{4}\(\d+\)\s+Item\s+\d+/i.test(p)
   );
 
-  // Group by item number — keep the longest section per item (the actual content, not TOC stubs)
+  // Group by item number — keep the longest section per item (the actual content, not
+  // TOC stubs), but only for sections belonging to the current meeting (prefixRe).
   const byItemNum = new Map();
   for (const rawSection of rawParts) {
-    const m = rawSection.match(/[A-Z]+\d{4}\(\d+\)\s+Item\s+(\d+)/i);
-    if (!m) continue;
+    const m = rawSection.match(prefixRe);
+    if (!m) continue; // a cross-reference to another meeting — skip it
     const itemNum = parseInt(m[1], 10);
     const existing = byItemNum.get(itemNum);
     if (!existing || rawSection.length > existing.length) {
@@ -543,6 +580,12 @@ Return a JSON array, one object per item, in item number order. No commentary, j
 // ─── Claude API: extract structured data from agenda items (with images) ──────
 // Batches items so no single API call exceeds Claude's 100-image limit.
 const MAX_IMAGES_PER_CALL = 80; // leave headroom under Claude's 100-image limit
+const MAX_ITEMS_PER_CALL  = 20; // cap items per call so JSON output never truncates at max_tokens
+// Claude's HTTP request body cap is ~32 MB and base64 image data dominates it. A handful
+// of 1.5 MB TGS plan scans (each ~2 MB once base64-encoded) blows that limit long before
+// the 80-image COUNT cap — the ltf-18may2026 Tempe LATM agenda 413'd (request_too_large)
+// with only 17 items. Budget well under 32 MB so a heavy-image batch always splits first.
+const MAX_REQUEST_BYTES = 18 * 1024 * 1024;
 
 async function extractAgendaData(client, committeeId, itemSections) {
   // Fetch all images in parallel first
@@ -561,18 +604,32 @@ async function extractAgendaData(client, committeeId, itemSections) {
   const totalImages = sectionsWithImages.reduce((n, s) => n + s.fetchedImages.length, 0);
   if (totalImages > 0) console.log(`  loaded ${totalImages} images for vision`);
 
-  // Batch items so total images per call stays under the limit
+  // Batch items so each call stays under BOTH the image limit AND a per-call item
+  // cap. Council agendas can carry 50+ items; with one JSON object per item, a single
+  // call easily overruns max_tokens and returns truncated (invalid) JSON. Capping items
+  // per batch keeps every response well within the token budget.
+  // Estimated request bytes a section contributes: its base64 image payload plus the
+  // (capped) text. Image bytes dominate; text is negligible but counted for honesty.
+  const sectionBytes = s =>
+    s.fetchedImages.reduce((n, img) => n + img.base64.length, 0) + (s.text ? s.text.length : 0);
+
   const batches = [];
-  let current = [], currentImgCount = 0;
+  let current = [], currentImgCount = 0, currentBytes = 0;
   for (const section of sectionsWithImages) {
     const imgCount = section.fetchedImages.length;
-    if (current.length > 0 && currentImgCount + imgCount > MAX_IMAGES_PER_CALL) {
+    const bytes = sectionBytes(section);
+    const wouldExceedImages = currentImgCount + imgCount > MAX_IMAGES_PER_CALL;
+    const wouldExceedItems  = current.length >= MAX_ITEMS_PER_CALL;
+    const wouldExceedBytes  = currentBytes + bytes > MAX_REQUEST_BYTES;
+    if (current.length > 0 && (wouldExceedImages || wouldExceedItems || wouldExceedBytes)) {
       batches.push(current);
       current = [];
       currentImgCount = 0;
+      currentBytes = 0;
     }
     current.push(section);
     currentImgCount += imgCount;
+    currentBytes += bytes;
   }
   if (current.length > 0) batches.push(current);
 
@@ -593,7 +650,7 @@ async function extractAgendaData(client, committeeId, itemSections) {
 
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: 'user', content }],
     });
 
@@ -868,7 +925,7 @@ async function processMeeting(meeting, client) {
       return;
     }
 
-    const sections = splitHtmlByItems(minutesHtml, meeting.minutesUrl);
+    const sections = splitHtmlByItems(minutesHtml, meeting.minutesUrl, meeting.refPrefix);
     console.log(`  found ${sections.length} item sections`);
     if (sections.length === 0) {
       // Public Forum minutes may not follow the standard Item N pattern —
@@ -903,7 +960,7 @@ async function processMeeting(meeting, client) {
     return;
   }
 
-  const itemSections = splitHtmlByItems(agendaHtml, meeting.agendaUrl);
+  const itemSections = splitHtmlByItems(agendaHtml, meeting.agendaUrl, meeting.refPrefix);
   console.log(`  found ${itemSections.length} item sections`);
   if (itemSections.length === 0) {
     console.error('  no items found — check HTML structure');
@@ -920,7 +977,7 @@ async function processMeeting(meeting, client) {
     try {
       console.log(`  fetching minutes: ${meeting.minutesUrl}`);
       const minutesHtml = await fetchHtml(meeting.minutesUrl);
-      const minutesSections = splitHtmlByItems(minutesHtml, meeting.minutesUrl);
+      const minutesSections = splitHtmlByItems(minutesHtml, meeting.minutesUrl, meeting.refPrefix);
       if (minutesSections.length > 0) {
         console.log('  extracting minutes data with Claude...');
         minutesItems = await extractMinutesData(client, meeting.committee_site_id, minutesSections);
@@ -1026,12 +1083,24 @@ async function main() {
   // Process newest first so D1 has the most current data quickly
   toProcess.sort((a, b) => b.date.localeCompare(a.date));
 
+  const failures = [];
   for (const meeting of toProcess) {
-    await processMeeting(meeting, client);
+    // Isolate each meeting: one bad agenda (e.g. a malformed Claude JSON response)
+    // must not abort the whole run and leave D1 half-populated. Record and continue.
+    try {
+      await processMeeting(meeting, client);
+    } catch (err) {
+      console.error(`  ERROR processing ${meeting.id}: ${err.message} — skipping`);
+      failures.push({ id: meeting.id, error: err.message });
+    }
     // Polite delay between meetings to avoid hammering either server
     await sleep(1000);
   }
 
+  if (failures.length) {
+    console.log(`\n${failures.length} meeting(s) failed:`);
+    for (const f of failures) console.log(`  - ${f.id}: ${f.error}`);
+  }
   console.log('\ndone.');
 }
 

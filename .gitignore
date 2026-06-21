@@ -17,6 +17,11 @@ ltf_report.html
 tempe_map_fragment.svg
 serve.py
 
+# D1 backups + match.js review output — large, regenerable, not source.
+# (The human relations were rescued from backups/ into db/human-relations.json.)
+backups/
+review/
+
 # macOS metadata
 .DS_Store
 
