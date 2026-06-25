@@ -4,6 +4,50 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-25 (session 11) — Relations review loop: resolution lifted 38 → 73/100
+
+Worked the human-review backlog the unresolved report exists to drive. For each of the 54
+subjects the session-9 reingest re-slugged out of reach, found the live topic it should map to,
+**verified the mapping against the infocouncil source document** (not the D1 headline), and wrote
+a confirmed `source='human'` alias so the link resolves by exact match forever after.
+
+### New: `db/relation-subject-aliases.json` + `db/apply-subject-aliases.js`
+- `relation-subject-aliases.json` is the durable, version-controlled record of the human
+  judgements (ADR 0006: git holds the irreplaceable judgement; D1 holds the rebuildable
+  projection). **41 `mappings`** (subject → topic, each with a source-doc ref in the note) and
+  **15 `leave`** entries (subjects deliberately left unresolved — a generic phrasing with no single
+  valid topic, or a matter the reingest split into near-duplicate topics; forcing a match would
+  publish a falsehood).
+- `apply-subject-aliases.js` upserts those 41 verified aliases plus pins **49 currently-fuzzy
+  hits** as sticky `source='human'` aliases so the whole resolved set survives the next reingest
+  (approved this session). Guards: aborts if any mapping points at a topic id no longer in D1;
+  subjects with an existing exact alias are left untouched. Reuses `db/lib/topics.js` `normKey`.
+
+### Source verification (the hard rule, `feedback_verify_merges_against_source`)
+- Fetched **3 infocouncil documents** (curl with a browser UA — the site 403s the default agent):
+  16 Feb 2026 LTF minutes (`LTF_16022026_MIN_4282`), 20 Apr 2026 LTF minutes
+  (`LTF_20042026_MIN_4284`), 26 Nov 2025 Flood Mgmt Advisory Cttee agenda (`FMACC_26112025_AGN_4221`).
+- **Caught a wrong fuzzy hit inside the existing 38:** the umbrella subject "Local Transport Forum
+  recommendations" fuzzy-matched (0.80) the **October** batch topic, but its 17 children are
+  exactly the **16 Feb 2026** LTF items 1-17 (adopted at council 17 Mar). Corrected via an
+  overriding alias → `topic-local-transport-forum-meeting-february-2026`. Had the 38 been aliased
+  blind, this falsehood would have been locked in. The other two LTF umbrellas verified: "…raised
+  crossings and cycleways" = 20 Apr batch (items 1-7), "…May 2026" = 18 May batch.
+- FMAC source confirmed the two flood items: "Illawarra Road pipeline — Hill & Thornley Streets" →
+  `topic-illawarra-road-flooding-review`, "Osgood Avenue stormwater drainage" →
+  `topic-review-of-flooding-on-osgood-avenue`.
+
+### Applied to live D1
+- 90 `source='human'` aliases written (`topic_subjects` now 690 aliases, 90 human).
+- `apply-relations.js --rebuild`: **73 of 100 resolved** (41 parent-child + 31 related),
+  **14 self-collapsed** (both subjects now thread to one topic — correct), **13 unresolved** across
+  15 subjects (all the documented `leave` set). Up from 38 resolved / 2 self-collapsed / 60
+  unresolved. `topic_relations` 38 → 72 rows; **0 dangling relation refs, 0 dangling aliases.** The
+  13 remaining are the honest ceiling for this pass — generic phrasings and data-quality splits
+  that would need a topic merge, not an alias.
+- Did **not** loosen the fuzzy threshold in `db/lib/topics.js` (would risk false links pipeline-wide);
+  every gain came from confirmed aliases.
+
 ## 2026-06-21 (session 10) — Re-runnable relations apply step; orphan-prune folded into ingest
 
 Built the piece ADR 0006 named as next: a re-runnable step that materializes the 100

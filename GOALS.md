@@ -98,6 +98,7 @@ Modules are independent. Each can be built and shipped without the others being 
 - Confirmed links persist to `topic_subjects` so oversight trends to zero (ADR 0003)
 - Superseded `db/dedupe.js` (merge-based, ADR 0002) — removed
 - `db/apply-relations.js` — re-materializes the 100 subject-keyed human links (`db/human-relations.json`) into `topic_relations` against current topic ids after any reingest; resolves via the alias store + fuzzy fallback and reports unresolved subjects for review (ADR 0006). `topic_relations` is a derived projection, not a source.
+- `db/relation-subject-aliases.json` + `db/apply-subject-aliases.js` — the review-loop output: source-verified `subject → topic` mappings (the durable git record of the human judgement) and a step that writes them, plus sticky pins for fuzzy hits, into `topic_subjects` as `source='human'`. Lifted relation resolution 38 → 73/100 (session 11); the rest are documented `leave` cases (no single valid topic) awaiting a future topic merge.
 
 ### 5. Document tools — make source material readable
 
