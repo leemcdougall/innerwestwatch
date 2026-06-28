@@ -571,6 +571,10 @@ function buildMinutesPrompt(committeeId) {
 For each item section below, extract:
 - item_number: the integer from "Item N" in the heading
 - outcome: the raw determination in the council's own terms, as a short lower-case string. Use the actual word the minutes use: "approved", "approved with amendments", "refused", "not supported", "deferred", "adopted", "endorsed", "noted", "withdrawn", "contract executed", etc. Null if the item was listed but no determination was recorded.
+- commitment: classify what an APPROVED/POSITIVE determination actually commits the council to. One of exactly:
+    - "action" — a concrete change or directive that produces a real-world effect: building or installing works, adopting/endorsing a plan or policy, executing a contract, approving a development, or a specific instruction to do a defined thing.
+    - "process" — only a procedural step: to investigate, review, consider, prepare or receive a report, note/receive information, consult, or write to another body. Nothing is built or finally settled.
+  If a single resolution does BOTH (e.g. "procure X AND investigate Y"), choose "action". Set null when outcome is null, or when the determination is a refusal/deferral (refused, not supported, withdrawn, deferred) — commitment only describes go-ahead decisions.
 - resolution: a plain-language one-sentence summary of what was decided, written for a resident. Include key details — what specifically was approved, rejected, or noted, any important conditions or amendments. E.g. "Approved — raised pedestrian crossing at Illawarra Rd/Wharf St to proceed."
 - works_start: ISO 8601 date (YYYY-MM-DD) if a specific construction or implementation start date is mentioned, otherwise null
 
@@ -825,6 +829,7 @@ async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPubli
     const outcome    = mins ? (mins.outcome || null) : null; // raw determination (ADR 0004)
     const resolution = mins ? mins.resolution : null;
     const worksStart = mins ? mins.works_start : null;
+    const commitment = mins ? (mins.commitment || null) : null; // action|process (ADR 0007)
 
     const subject = item.subject || item.headline || 'untitled';
     const { id: topicId, key: subjectKey, isNew } = resolveTopicId(subject, aliasMap, existingIds);
@@ -869,11 +874,11 @@ async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPubli
       });
     }
 
-    // Decision: the per-appearance record (its own headline + raw outcome).
+    // Decision: the per-appearance record (its own headline + raw outcome + commitment).
     stmts.push({
-      sql: `INSERT OR REPLACE INTO decisions (id, meeting_id, topic_id, item_number, headline, resolution, outcome, works_start)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [decisionId, mid, topicId, n, item.headline, resolution, outcome, worksStart || null],
+      sql: `INSERT OR REPLACE INTO decisions (id, meeting_id, topic_id, item_number, headline, resolution, outcome, works_start, commitment)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [decisionId, mid, topicId, n, item.headline, resolution, outcome, worksStart || null, commitment],
     });
 
     // Key images for this appearance hang off the topic.
@@ -896,13 +901,17 @@ async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPubli
   // decision history (covers appearances written by earlier meetings AND this one).
   for (const topicId of touchedTopics) {
     const decs = (await d1Query(
-      `SELECT d.outcome, d.works_start, m.date
-         FROM decisions d JOIN meetings m ON m.id = d.meeting_id
+      `SELECT d.outcome, d.works_start, d.commitment, m.date, t.type
+         FROM decisions d
+         JOIN meetings m ON m.id = d.meeting_id
+         JOIN topics t   ON t.id = d.topic_id
         WHERE d.topic_id = ?`, [topicId]))[0]?.results || [];
     const dates = decs.map(d => d.date).filter(Boolean).sort();
+    // type is the topic's representative type — same on every row; feeds the commitment
+    // fallback in deriveStage when a decision has no AI commitment tag (ADR 0007).
     await d1Query(
       `UPDATE topics SET first_seen = ?, last_seen = ?, stage = ? WHERE id = ?`,
-      [dates[0] || null, dates[dates.length - 1] || null, deriveStage(decs), topicId]);
+      [dates[0] || null, dates[dates.length - 1] || null, deriveStage(decs, decs[0]?.type), topicId]);
   }
 
   const imageCount = agendaItems.reduce((n, it) => n + (it.keyImageUrls?.length || 0), 0);

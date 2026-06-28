@@ -72,9 +72,15 @@ Each Decision carries its own per-appearance **headline** (plain-language summar
 Committee-neutral status, modelled on two axes (ADR 0004). The old LTF-specific vocabulary (`forum-yes`, `works-coming`, …) is retired.
 
 **Stage** lives on the Topic — the lifecycle position a resident skims, derived from the most-advanced point any of its decisions reached:
-`proposed` · `deferred` · `decided` · `in-progress` · `completed`.
+`proposed` · `deferred` · `under-review` · `decided` · `in-progress` · `completed`.
 
-**Outcome** lives on the Decision — the raw determination in the council's own terms: `approved`, `approved with amendments`, `refused`, `not supported`, `deferred`, `adopted`, `noted`, `contract executed`, etc. Null until a determination is recorded.
+`under-review` (resident label "Under review") sits between `deferred` and `decided`. It is the stage for a decision the council *approved* but only as a **process step** — investigate, review, prepare a report, receive or note information — not as a concrete change. It stops an "approved to look into it" motion from reading the same as "approved to build it". See **Commitment** below and ADR 0007.
+
+`completed` is defined but not yet derived: no source signal reliably marks a works as finished (a `works_start` date is a start, not an end), so the pipeline tops out at `in-progress`.
+
+**Outcome** lives on the Decision — the raw determination in the council's own terms: `approved`, `approved with amendments`, `refused`, `not supported`, `deferred`, `adopted`, `noted`, `contract executed`, etc. Null until a determination is recorded. A refusal (`refused`, `not supported`, `withdrawn`) reads as stage `decided` with the outcome shown alongside — a determination *was* made; the outcome says it was "no" (ADR 0004).
+
+**Commitment** is the action-versus-process nature of an approved Decision, tagged by the AI as it reads the minutes: `action` (commits to a concrete change — build, install, adopt a plan, execute a contract) or `process` (commits only to investigate / review / receive / note). It is what separates `decided` from `under-review`. When a single resolution does both, `action` wins. If the tag is absent (older data, minutes-only committees), the item **type** is the fallback: deliberative types (motion, notice-of-motion, report) default to `under-review`, works types to `decided`.
 
 ---
 

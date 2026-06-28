@@ -41,8 +41,10 @@ CREATE TABLE IF NOT EXISTS meetings (
 --   This is the primary linking signal (see topic_subjects). Stable across appearances.
 --   e.g. "South Marrickville Flood Study", "King Street Crawl".
 -- headline: a current display summary — denormalised from the latest decision.
--- stage: committee-neutral lifecycle (ADR 0004):
---   proposed | deferred | decided | in-progress | completed
+-- stage: committee-neutral lifecycle (ADR 0004 + 0007):
+--   proposed | deferred | under-review | decided | in-progress | completed
+--   (under-review = approved only as a process step; see decisions.commitment. completed
+--    is defined but never derived — no source signal marks a works finished.)
 -- suburbs/streets: JSON arrays, the UNION across all of this topic's decisions.
 CREATE TABLE IF NOT EXISTS topics (
     id          TEXT PRIMARY KEY,              -- e.g. "topic-leichhardt-aquatic-centre-stage-2"
@@ -63,6 +65,9 @@ CREATE TABLE IF NOT EXISTS topics (
 -- headline: the per-appearance plain-language summary (was on topics in the old model).
 -- outcome: the raw determination in council's own terms — approved, refused, adopted,
 --   noted, "contract executed", etc. Null until a decision is made. See ADR 0004.
+-- commitment: for a go-ahead outcome, what it commits to — 'action' (a concrete change)
+--   or 'process' (only investigate/review/receive/note). Splits `decided` from
+--   `under-review` in deriveStage. Null when pending or for a refusal/deferral. ADR 0007.
 CREATE TABLE IF NOT EXISTS decisions (
     id          TEXT PRIMARY KEY,              -- e.g. "ltf-18may2026-04"
     meeting_id  TEXT NOT NULL REFERENCES meetings(id),
@@ -71,7 +76,8 @@ CREATE TABLE IF NOT EXISTS decisions (
     headline    TEXT,                          -- per-appearance summary, AI-generated
     resolution  TEXT,                          -- plain-language outcome detail, AI-generated; null if pending
     outcome     TEXT,                          -- raw determination string; null if pending
-    works_start TEXT                           -- ISO 8601 date works begin; null if unknown
+    works_start TEXT,                          -- ISO 8601 date works begin; null if unknown
+    commitment  TEXT CHECK(commitment IN ('action', 'process'))  -- ADR 0007; null if pending/refused
 );
 
 CREATE INDEX IF NOT EXISTS idx_decisions_topic ON decisions(topic_id);
