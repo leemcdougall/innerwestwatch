@@ -4,6 +4,50 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-28 (session 12) — Data-quality merge pass + leave-as-is cluster review
+
+Worked the session-11 "13 remaining unresolved" backlog with Lee in plain language. The
+13 broke into TWO kinds, not one: genuine duplicate splits (merge) and generic labels
+spanning genuinely-distinct matters (leave). Went through every cluster against the
+infocouncil source documents (`feedback_verify_merges_against_source`).
+
+### Four clear merges applied (migration 0006, live D1 --remote; 600 → 594 topics)
+Each was the reingest minting a separate topic per appearance of one recurring matter.
+Confirmed against the source doc (not the D1 headline) before merging:
+- **Return and Earn** recycling at council venues/events — Dec 25 / May 26 / Jun 26 → one
+  topic, stage decided, 3 decisions.
+- **Supporting Visual Artists and Writers — affordable creative spaces** — Feb / Mar / May
+  26 → one topic, 3 decisions (places unioned; "Railway Rd"/"Railway Road" deduped).
+- **Seniors Morning Teas to Celebrate the GreenWay** — Feb / Mar 26 → one topic; both
+  minutes carry the identical item title. (Distinct from the broader "Expansion of Seniors
+  Morning Teas program", left separate.)
+- **Design Excellence LEP Amendment Clause 6.9** — May deferred → Jun report → one topic;
+  the June agenda cites back to "C0526(1) Item 2" and Clause 6.9.
+- Mechanics mirror migration 0003 (repoint decisions/images/aliases, promote loser subject
+  aliases to `source='human'`, recompute stage/places/span, drop empty losers). Verified
+  0 orphan decisions, 0 dangling aliases. Pre-merge row snapshots saved to `backups/`.
+
+### Four "leave as is" clusters reviewed — confirmed NOT duplicates
+- **InnerWest@40 speed limits** (Areas 1,2,11 vs 4,9,10) — two real area batches of one
+  program. Left as two topics but **linked `related`** (one new row, via human-relations.json
+  + `apply-relations.js --apply`; topic_relations 72 → 73). Areas 1,2,11 already threaded its
+  May+Jun appearances correctly.
+- **Audit, Risk & Improvement Committee minutes** (5 topics) — separate governance filings
+  (investments, audited accounts, legal/risk, business continuity). No street-level content;
+  left fully separate, no links. Filed **issue #42** (surface oversight/risk context on
+  capital-project topic pages — a frontend/Milestone-7 display concern, not stored relations).
+- **Fire & Rescue NSW reports** (7 topics) — each a different batch of buildings. Left
+  separate and deliberately NOT linked (different addresses); existing street tags already
+  let street search surface the right one.
+- **"Victoria Road"** (4 topics) — two physically different roads (Rozelle planning agreements
+  vs Marrickville traffic works). Left separate; the generic label was exactly why blanket
+  linking by shared street name is unsafe.
+
+### Net
+600 → 594 topics; topic_relations 72 → 73; human-relations.json 100 → 101 links; 1 new
+GitHub issue (#42). The honest residue of the original 13: the genuine duplicates are now
+merged; the rest were never duplicates and are correctly left distinct.
+
 ## 2026-06-25 (session 11) — Relations review loop: resolution lifted 38 → 73/100
 
 Worked the human-review backlog the unresolved report exists to drive. For each of the 54

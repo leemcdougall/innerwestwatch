@@ -6,9 +6,18 @@
       "backups/topic_relations-reapply.sql"
     ],
     "rescued_on": "2026-06-21",
-    "count": 100
+    "count": 101,
+    "amended_on": "2026-06-28 — added one InnerWest@40 cross-area 'related' link from the leave-as-is cluster pass"
   },
   "relations": [
+    {
+      "subjectA": "InnerWest@40 speed limit reduction Areas 1, 2, 11",
+      "subjectB": "InnerWest@40 — Areas 4, 9, 10 speed limit reduction",
+      "kind": "related",
+      "note": "Same InnerWest@40 40km/h rollout, two different area batches (Areas 1,2,11 = Haberfield/Rozelle/Ashfield; Areas 4,9,10 = Leichhardt/Ashfield/Dulwich Hill). Not duplicates — a cross-reference so a resident reading one batch sees the other. Added 2026-06-28 leave-as-is cluster pass.",
+      "source": "human",
+      "created_at": "2026-06-28"
+    },
     {
       "subjectA": "Accessible parklets, Australia Street Newtown",
       "subjectB": "Temporary parklets, Australia St",
