@@ -4,6 +4,46 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-06-29 (session 13) — `under-review` stage; AI re-ingest attempted, reverted, shipped via type rule
+
+Fixed the backend bug where a topic read `decided` when council had only approved an
+*investigate/report-back* motion (the badge overstated progress on ~321 of 594 topics).
+Grilled the design with Lee in plain language (ADR 0007).
+
+### Shipped
+- **New `under-review` stage** between `deferred` and `decided` (resident label "Under
+  review"). `stageRank`/`deriveStage` reshaped in `db/lib/topics.js`; refusals stay
+  `decided` (ADR 0004 preserved); `completed` stays unwired. New no-dep `node:assert` test
+  (`db/lib/topics.test.js`, 16 checks) + `npm test`.
+- **`decisions.commitment` column** (`action`|`process`) added to `schema.sql` + migration
+  0007, applied live. `deriveStage` reads it, falling back to item type when absent.
+- **`db/recompute-stages.js`** — recomputes every topic's stage from existing decisions via
+  the real `deriveStage`, no source re-read. Activated the fix: 321 topics decided →
+  under-review, nothing else moved. Canonical Unwins Bridge Rd safety-review motion now
+  reads `under-review`.
+
+### Attempted, then reverted (ADR 0007 update)
+- Ran the full in-place AI re-ingest (`--force`) to populate `commitment`. It was unreliable
+  (tagged the flagship Unwins motion `action` → `decided`, the exact inversion) and corrosive
+  (rewording re-slugged ~424 of 594 topic ids, pruning 37 of 96 human-confirmed aliases).
+- **Recovered via D1 Time Travel** rollback to the pristine pre-session state (594 topics,
+  96 human aliases, 0 orphans), re-applied migration 0007, activated via `recompute-stages.js`.
+- Fixed a real bug found en route: `pruneOrphans` deleted topics before their FK children
+  (D1 *does* enforce foreign keys over REST), aborting the run. Now deletes
+  relations/images/aliases first.
+- **AI `commitment` tagging deferred** — column + code stay dormant; type fallback is the
+  active mechanism. Do not run `--force` until topic ids are stable across re-reads.
+
+### Issues
+- Opened [#45](https://github.com/leemcdougall/innerwestwatch/issues/45) — re-ingest churns
+  topic ids / destroys human aliases; prerequisite for reviving AI commitment tagging.
+
+### Item #2 (missed minutes) — not pursued
+A full re-ingest would have measured/closed it as a side effect, but re-ingest is shelved.
+Re-evaluate once topic-id stability (#45) lands.
+
+---
+
 ## 2026-06-28 (session 12) — Data-quality merge pass + leave-as-is cluster review
 
 Worked the session-11 "13 remaining unresolved" backlog with Lee in plain language. The

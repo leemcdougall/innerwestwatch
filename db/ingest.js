@@ -188,11 +188,21 @@ const LIKELY_NO_MEETING_MONTHS = {}; // empty — scan everything, let the site 
 // ─── parse CLI args ───────────────────────────────────────────────────────────
 function parseArgs() {
   const args = process.argv.slice(2);
-  const opts = { months: 6, meetingId: null, committeeSlug: null };
+  const opts = { months: 6, meetingId: null, committeeSlug: null, force: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--months' && args[i + 1]) opts.months = parseInt(args[++i], 10);
     if (args[i] === '--meeting' && args[i + 1]) opts.meetingId = args[++i];
     if (args[i] === '--committee' && args[i + 1]) opts.committeeSlug = args[++i];
+    // --force re-reads meetings already in D1 (a full in-place re-ingest) instead of the
+    // default of only processing unseen meetings.
+    //
+    // ⚠️ DANGER (ADR 0007 update 2026-06-28): re-reading rewords AI subjects, which re-slugs
+    // the subject-derived topic id; the old id orphans and is pruned. A single --force run
+    // re-slugged ~424 of ~594 topics and destroyed 37 of 96 human-confirmed subject aliases
+    // (the ADR 0003 learning store). DO NOT run --force until topic ids are stable across
+    // re-reads (tracked as a GitHub issue). To re-apply a changed stage rule without
+    // re-reading anything, use db/recompute-stages.js instead.
+    if (args[i] === '--force') opts.force = true;
   }
   return opts;
 }
@@ -571,6 +581,10 @@ function buildMinutesPrompt(committeeId) {
 For each item section below, extract:
 - item_number: the integer from "Item N" in the heading
 - outcome: the raw determination in the council's own terms, as a short lower-case string. Use the actual word the minutes use: "approved", "approved with amendments", "refused", "not supported", "deferred", "adopted", "endorsed", "noted", "withdrawn", "contract executed", etc. Null if the item was listed but no determination was recorded.
+- commitment: classify what an APPROVED/POSITIVE determination actually commits the council to. One of exactly:
+    - "action" — a concrete change or directive that produces a real-world effect: building or installing works, adopting/endorsing a plan or policy, executing a contract, approving a development, or a specific instruction to do a defined thing.
+    - "process" — only a procedural step: to investigate, review, consider, prepare or receive a report, note/receive information, consult, or write to another body. Nothing is built or finally settled.
+  If a single resolution does BOTH (e.g. "procure X AND investigate Y"), choose "action". Set null when outcome is null, or when the determination is a refusal/deferral (refused, not supported, withdrawn, deferred) — commitment only describes go-ahead decisions.
 - resolution: a plain-language one-sentence summary of what was decided, written for a resident. Include key details — what specifically was approved, rejected, or noted, any important conditions or amendments. E.g. "Approved — raised pedestrian crossing at Illawarra Rd/Wharf St to proceed."
 - works_start: ISO 8601 date (YYYY-MM-DD) if a specific construction or implementation start date is mentioned, otherwise null
 
@@ -825,6 +839,7 @@ async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPubli
     const outcome    = mins ? (mins.outcome || null) : null; // raw determination (ADR 0004)
     const resolution = mins ? mins.resolution : null;
     const worksStart = mins ? mins.works_start : null;
+    const commitment = mins ? (mins.commitment || null) : null; // action|process (ADR 0007)
 
     const subject = item.subject || item.headline || 'untitled';
     const { id: topicId, key: subjectKey, isNew } = resolveTopicId(subject, aliasMap, existingIds);
@@ -869,11 +884,11 @@ async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPubli
       });
     }
 
-    // Decision: the per-appearance record (its own headline + raw outcome).
+    // Decision: the per-appearance record (its own headline + raw outcome + commitment).
     stmts.push({
-      sql: `INSERT OR REPLACE INTO decisions (id, meeting_id, topic_id, item_number, headline, resolution, outcome, works_start)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [decisionId, mid, topicId, n, item.headline, resolution, outcome, worksStart || null],
+      sql: `INSERT OR REPLACE INTO decisions (id, meeting_id, topic_id, item_number, headline, resolution, outcome, works_start, commitment)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [decisionId, mid, topicId, n, item.headline, resolution, outcome, worksStart || null, commitment],
     });
 
     // Key images for this appearance hang off the topic.
@@ -896,13 +911,17 @@ async function writeMeetingToD1(meeting, agendaItems, minutesItems, minutesPubli
   // decision history (covers appearances written by earlier meetings AND this one).
   for (const topicId of touchedTopics) {
     const decs = (await d1Query(
-      `SELECT d.outcome, d.works_start, m.date
-         FROM decisions d JOIN meetings m ON m.id = d.meeting_id
+      `SELECT d.outcome, d.works_start, d.commitment, m.date, t.type
+         FROM decisions d
+         JOIN meetings m ON m.id = d.meeting_id
+         JOIN topics t   ON t.id = d.topic_id
         WHERE d.topic_id = ?`, [topicId]))[0]?.results || [];
     const dates = decs.map(d => d.date).filter(Boolean).sort();
+    // type is the topic's representative type — same on every row; feeds the commitment
+    // fallback in deriveStage when a decision has no AI commitment tag (ADR 0007).
     await d1Query(
       `UPDATE topics SET first_seen = ?, last_seen = ?, stage = ? WHERE id = ?`,
-      [dates[0] || null, dates[dates.length - 1] || null, deriveStage(decs), topicId]);
+      [dates[0] || null, dates[dates.length - 1] || null, deriveStage(decs, decs[0]?.type), topicId]);
   }
 
   const imageCount = agendaItems.reduce((n, it) => n + (it.keyImageUrls?.length || 0), 0);
@@ -1043,25 +1062,33 @@ async function auditPortal(vsd, unmatchedLinks) {
 // with no decisions pointing at it — an orphan. Run once at the end of an ingest so
 // reingests don't accumulate stale topics until someone hand-runs the cleanup.
 //
-// Order matters (D1 doesn't enforce foreign keys): drop the orphan topics first, then
-// the learned aliases and images that now reference a topic id that no longer exists —
-// otherwise the alias store would resolve a subject to a dead topic. topic_relations is
-// NOT pruned here: it is a derived projection rebuilt by db/apply-relations.js --rebuild
-// (ADR 0006), which re-resolves every link against the current topic ids.
+// Order matters BECAUSE D1 enforces foreign keys over the REST API: a DELETE of a topic
+// still referenced by a child row fails with SQLITE_CONSTRAINT_FOREIGNKEY (this aborted a
+// --force re-ingest once). So delete every child that references an orphan FIRST — its
+// relations, images, and learned aliases — THEN the orphan topics themselves. The orphan
+// set is computed from `decisions` (the same condition each time), so it stays stable
+// across these deletes until the final topic delete lands. topic_relations rows touching
+// an orphan must go too (FK), which is harmless: relations are a derived projection
+// rebuilt by db/apply-relations.js --rebuild (ADR 0006), and human links live in
+// db/human-relations.json, so the rebuild re-resolves every surviving link afterward.
 async function pruneOrphans() {
+  const ORPHAN = '(SELECT id FROM topics WHERE id NOT IN (SELECT topic_id FROM decisions))';
+  const rels = await d1Query(
+    `DELETE FROM topic_relations WHERE topic_a IN ${ORPHAN} OR topic_b IN ${ORPHAN}`
+  );
+  const imgs = await d1Query(
+    `DELETE FROM images WHERE topic_id IN ${ORPHAN}`
+  );
+  const aliases = await d1Query(
+    `DELETE FROM topic_subjects WHERE topic_id IN ${ORPHAN}`
+  );
   const topics = await d1Query(
     'DELETE FROM topics WHERE id NOT IN (SELECT topic_id FROM decisions)'
   );
-  const aliases = await d1Query(
-    'DELETE FROM topic_subjects WHERE topic_id NOT IN (SELECT id FROM topics)'
-  );
-  const imgs = await d1Query(
-    'DELETE FROM images WHERE topic_id NOT IN (SELECT id FROM topics)'
-  );
   const n = r => r[0]?.meta?.changes ?? 0;
   const pruned = n(topics);
-  if (pruned || n(aliases) || n(imgs)) {
-    console.log(`pruned ${pruned} orphan topic(s), ${n(aliases)} alias(es), ${n(imgs)} image(s)`);
+  if (pruned || n(aliases) || n(imgs) || n(rels)) {
+    console.log(`pruned ${pruned} orphan topic(s), ${n(aliases)} alias(es), ${n(imgs)} image(s), ${n(rels)} relation(s)`);
   }
 }
 
@@ -1100,10 +1127,14 @@ async function main() {
   const discovered = await discoverMeetings(opts.months, opts.committeeSlug);
   const alreadyIngested = await getIngestedMeetingIds();
 
-  const toProcess = discovered.filter(m => !alreadyIngested.has(m.id));
+  // Default: process only meetings not yet in D1. --force: re-read everything (in-place
+  // re-ingest), e.g. to backfill a new field across the corpus (ADR 0007 commitment tag).
+  const toProcess = opts.force ? discovered : discovered.filter(m => !alreadyIngested.has(m.id));
   const skipped = discovered.length - toProcess.length;
 
-  console.log(`\n${toProcess.length} new meetings to ingest (${skipped} already in D1)`);
+  console.log(opts.force
+    ? `\n--force: re-reading all ${toProcess.length} discovered meetings in place`
+    : `\n${toProcess.length} new meetings to ingest (${skipped} already in D1)`);
   if (toProcess.length === 0) {
     console.log('nothing to do.');
     return;
