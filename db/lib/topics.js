@@ -47,23 +47,72 @@ export function sameSubject(a, b) {
   return inter / (a.size + b.size - inter) >= SUBJECT_JACCARD;
 }
 
-// Rank a single decision's progress on the neutral lifecycle (ADR 0004).
-//   4 in-progress · 3 decided · 2 deferred · 1 proposed
-export function stageRank({ outcome, works_start } = {}) {
-  const o = (outcome || '').toLowerCase();
-  if (works_start || o.includes('executed') || o.includes('underway')) return 4;
-  if (o && (o.includes('defer') || o.includes('held over'))) return 2;
-  if (o) return 3;
-  return 1;
+// Item types where an "approved" outcome means a CONCRETE change is coming to a street —
+// these read `decided` when approved. Every other type (motions, notices of motion, staff
+// reports, advisory items) defaults to the more cautious `under-review`, because their
+// "approval" is usually a resolution to investigate, receive, or note — not to build.
+//
+// This allowlist is only the FALLBACK used when a decision has no AI `commitment` tag
+// (rows ingested before ADR 0007, or the minutes-only Public Forum). Once a meeting is
+// re-read, the per-decision `commitment` tag below takes precedence. Failing safe to
+// `under-review` means an unknown future type understates progress rather than overstating
+// it — the safer error for a resident-facing badge. (ADR 0007)
+export const WORKS_TYPES = new Set((
+  'crossing parking latm speed infrastructure development development-application '
+  + 'planning-proposal modification rezoning asset waste event project'
+).split(' '));
+
+// A refusal IS a determination, so it reads `decided` (with the raw outcome shown
+// alongside saying "no") — never `under-review`. Symmetry with ADR 0004's decided+outcome
+// model: a knock-back is settled, not still being looked into. (ADR 0007)
+function isRefusal(o) {
+  return o.includes('refus') || o.includes('not supported') || o.includes('withdraw')
+    || o.includes('lapsed') || o.includes('reject') || o.includes('declined');
 }
 
-const STAGE_BY_RANK = { 4: 'in-progress', 3: 'decided', 2: 'deferred', 1: 'proposed' };
+// Rank a single decision's progress on the neutral lifecycle (ADR 0004 + 0007):
+//   6 completed · 5 in-progress · 4 decided · 3 under-review · 2 deferred · 1 proposed
+//
+// `commitment` is the AI's `action` | `process` tag (ADR 0007): `action` = a concrete
+// change was approved; `process` = only a step like investigate/review/receive/note. It
+// is what separates `decided` from `under-review`. `type` (the topic's representative
+// type) is used ONLY as the fallback when the tag is absent.
+export function stageRank({ outcome, works_start, commitment } = {}, type) {
+  const o = (outcome || '').toLowerCase();
+
+  // Works underway or delivered. `completed` (6) is intentionally never produced: no
+  // source signal marks a works finished — a works_start is a start, not an end (ADR 0007).
+  if (works_start || o.includes('executed') || o.includes('underway')) return 5;
+
+  // Held over — neither a rejection nor a fresh proposal; it loops (ADR 0004).
+  if (o && (o.includes('defer') || o.includes('held over'))) return 2;
+
+  // No determination recorded yet.
+  if (!o) return 1;
+
+  // A refusal is a settled determination → decided (the outcome carries the "no").
+  if (isRefusal(o)) return 4;
+
+  // A positive determination. The action-vs-process split decides decided vs under-review.
+  // Trust an explicit AI tag; otherwise fall back to the item type. An unrecognised tag
+  // value also falls back to the type rule rather than being assumed an action.
+  let kind;
+  if (commitment === 'process') kind = 'process';
+  else if (commitment === 'action') kind = 'action';
+  else kind = WORKS_TYPES.has(type) ? 'action' : 'process';
+  return kind === 'process' ? 3 : 4;
+}
+
+const STAGE_BY_RANK = {
+  6: 'completed', 5: 'in-progress', 4: 'decided', 3: 'under-review', 2: 'deferred', 1: 'proposed',
+};
 
 // A topic's stage is the most-advanced point any of its decisions reached, so an issue
 // approved months ago does not read "proposed" just because a follow-up motion is its
-// latest row. `decisions` is an array of { outcome, works_start }.
-export function deriveStage(decisions) {
+// latest row. `decisions` is an array of { outcome, works_start, commitment }; `type` is
+// the topic's representative type, feeding the commitment fallback in stageRank.
+export function deriveStage(decisions, type) {
   let rank = 1;
-  for (const d of decisions) rank = Math.max(rank, stageRank(d));
+  for (const d of decisions) rank = Math.max(rank, stageRank(d, type));
   return STAGE_BY_RANK[rank];
 }

@@ -57,7 +57,8 @@ function d1(sql) {
 function fetchDecisions() {
   return d1(`
     SELECT d.id, d.item_number, d.meeting_id, d.headline, d.resolution,
-           d.outcome, t.type, t.stage, t.streets, t.suburbs, t.detail_page,
+           d.outcome, d.works_start, d.commitment,
+           t.type, t.stage, t.streets, t.suburbs, t.detail_page,
            m.date, c.id AS committee
     FROM decisions d
     JOIN topics t  ON t.id = d.topic_id
@@ -117,7 +118,8 @@ function fallbackSubject(headline) {
 }
 
 // normKey / tokenSet / slug / sameSubject / deriveStage are shared with the ingest
-// pipeline — see db/lib/topics.js. deriveStage takes [{ outcome, works_start }].
+// pipeline — see db/lib/topics.js. deriveStage takes ([{ outcome, works_start, commitment }],
+// type) — the topic type feeds the commitment fallback for the under-review stage (ADR 0007).
 
 // ─── cluster decisions into topics ───────────────────────────────────────────
 // Returns { topics, suggestions } — suggestions are street-corroborated cross-type
@@ -185,7 +187,7 @@ function cluster(decisions, subjects) {
       id, subject, members,
       type: latest.type,
       headline: latest.headline,
-      stage: deriveStage(members),
+      stage: deriveStage(members, latest.type),
       streets: union('streets'),
       suburbs: union('suburbs'),
       detail_page: members.map(m => m.detail_page).find(Boolean) || null,
