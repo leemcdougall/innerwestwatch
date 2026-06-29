@@ -80,7 +80,9 @@ Committee-neutral status, modelled on two axes (ADR 0004). The old LTF-specific 
 
 **Outcome** lives on the Decision — the raw determination in the council's own terms: `approved`, `approved with amendments`, `refused`, `not supported`, `deferred`, `adopted`, `noted`, `contract executed`, etc. Null until a determination is recorded. A refusal (`refused`, `not supported`, `withdrawn`) reads as stage `decided` with the outcome shown alongside — a determination *was* made; the outcome says it was "no" (ADR 0004).
 
-**Commitment** is the action-versus-process nature of an approved Decision, tagged by the AI as it reads the minutes: `action` (commits to a concrete change — build, install, adopt a plan, execute a contract) or `process` (commits only to investigate / review / receive / note). It is what separates `decided` from `under-review`. When a single resolution does both, `action` wins. If the tag is absent (older data, minutes-only committees), the item **type** is the fallback: deliberative types (motion, notice-of-motion, report) default to `under-review`, works types to `decided`.
+**Commitment** is the action-versus-process nature of an approved Decision: `action` (commits to a concrete change — build, install, adopt a plan, execute a contract) or `process` (commits only to investigate / review / receive / note). It is what would separate `decided` from `under-review` per decision. The intent is for the AI to tag it while reading the minutes, with `action` winning when a resolution does both.
+
+In practice the tag is **currently unpopulated**: the AI classifier proved unreliable (it inverted the flagship case) and the re-ingest that would fill it churns topic ids and destroys human aliases, so it is deferred (ADR 0007). Today every stage is decided by the **type fallback**: deliberative types (motion, notice-of-motion, report) → `under-review`, works types (crossing, parking, latm, …) → `decided`. Stages are recomputed from existing decisions by `db/recompute-stages.js`, never by re-reading source documents.
 
 ---
 

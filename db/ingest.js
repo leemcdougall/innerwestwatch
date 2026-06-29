@@ -188,11 +188,21 @@ const LIKELY_NO_MEETING_MONTHS = {}; // empty — scan everything, let the site 
 // ─── parse CLI args ───────────────────────────────────────────────────────────
 function parseArgs() {
   const args = process.argv.slice(2);
-  const opts = { months: 6, meetingId: null, committeeSlug: null };
+  const opts = { months: 6, meetingId: null, committeeSlug: null, force: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--months' && args[i + 1]) opts.months = parseInt(args[++i], 10);
     if (args[i] === '--meeting' && args[i + 1]) opts.meetingId = args[++i];
     if (args[i] === '--committee' && args[i + 1]) opts.committeeSlug = args[++i];
+    // --force re-reads meetings already in D1 (a full in-place re-ingest) instead of the
+    // default of only processing unseen meetings.
+    //
+    // ⚠️ DANGER (ADR 0007 update 2026-06-28): re-reading rewords AI subjects, which re-slugs
+    // the subject-derived topic id; the old id orphans and is pruned. A single --force run
+    // re-slugged ~424 of ~594 topics and destroyed 37 of 96 human-confirmed subject aliases
+    // (the ADR 0003 learning store). DO NOT run --force until topic ids are stable across
+    // re-reads (tracked as a GitHub issue). To re-apply a changed stage rule without
+    // re-reading anything, use db/recompute-stages.js instead.
+    if (args[i] === '--force') opts.force = true;
   }
   return opts;
 }
@@ -1052,25 +1062,33 @@ async function auditPortal(vsd, unmatchedLinks) {
 // with no decisions pointing at it — an orphan. Run once at the end of an ingest so
 // reingests don't accumulate stale topics until someone hand-runs the cleanup.
 //
-// Order matters (D1 doesn't enforce foreign keys): drop the orphan topics first, then
-// the learned aliases and images that now reference a topic id that no longer exists —
-// otherwise the alias store would resolve a subject to a dead topic. topic_relations is
-// NOT pruned here: it is a derived projection rebuilt by db/apply-relations.js --rebuild
-// (ADR 0006), which re-resolves every link against the current topic ids.
+// Order matters BECAUSE D1 enforces foreign keys over the REST API: a DELETE of a topic
+// still referenced by a child row fails with SQLITE_CONSTRAINT_FOREIGNKEY (this aborted a
+// --force re-ingest once). So delete every child that references an orphan FIRST — its
+// relations, images, and learned aliases — THEN the orphan topics themselves. The orphan
+// set is computed from `decisions` (the same condition each time), so it stays stable
+// across these deletes until the final topic delete lands. topic_relations rows touching
+// an orphan must go too (FK), which is harmless: relations are a derived projection
+// rebuilt by db/apply-relations.js --rebuild (ADR 0006), and human links live in
+// db/human-relations.json, so the rebuild re-resolves every surviving link afterward.
 async function pruneOrphans() {
+  const ORPHAN = '(SELECT id FROM topics WHERE id NOT IN (SELECT topic_id FROM decisions))';
+  const rels = await d1Query(
+    `DELETE FROM topic_relations WHERE topic_a IN ${ORPHAN} OR topic_b IN ${ORPHAN}`
+  );
+  const imgs = await d1Query(
+    `DELETE FROM images WHERE topic_id IN ${ORPHAN}`
+  );
+  const aliases = await d1Query(
+    `DELETE FROM topic_subjects WHERE topic_id IN ${ORPHAN}`
+  );
   const topics = await d1Query(
     'DELETE FROM topics WHERE id NOT IN (SELECT topic_id FROM decisions)'
   );
-  const aliases = await d1Query(
-    'DELETE FROM topic_subjects WHERE topic_id NOT IN (SELECT id FROM topics)'
-  );
-  const imgs = await d1Query(
-    'DELETE FROM images WHERE topic_id NOT IN (SELECT id FROM topics)'
-  );
   const n = r => r[0]?.meta?.changes ?? 0;
   const pruned = n(topics);
-  if (pruned || n(aliases) || n(imgs)) {
-    console.log(`pruned ${pruned} orphan topic(s), ${n(aliases)} alias(es), ${n(imgs)} image(s)`);
+  if (pruned || n(aliases) || n(imgs) || n(rels)) {
+    console.log(`pruned ${pruned} orphan topic(s), ${n(aliases)} alias(es), ${n(imgs)} image(s), ${n(rels)} relation(s)`);
   }
 }
 
@@ -1109,10 +1127,14 @@ async function main() {
   const discovered = await discoverMeetings(opts.months, opts.committeeSlug);
   const alreadyIngested = await getIngestedMeetingIds();
 
-  const toProcess = discovered.filter(m => !alreadyIngested.has(m.id));
+  // Default: process only meetings not yet in D1. --force: re-read everything (in-place
+  // re-ingest), e.g. to backfill a new field across the corpus (ADR 0007 commitment tag).
+  const toProcess = opts.force ? discovered : discovered.filter(m => !alreadyIngested.has(m.id));
   const skipped = discovered.length - toProcess.length;
 
-  console.log(`\n${toProcess.length} new meetings to ingest (${skipped} already in D1)`);
+  console.log(opts.force
+    ? `\n--force: re-reading all ${toProcess.length} discovered meetings in place`
+    : `\n${toProcess.length} new meetings to ingest (${skipped} already in D1)`);
   if (toProcess.length === 0) {
     console.log('nothing to do.');
     return;

@@ -1,6 +1,6 @@
 # ADR 0007 — An "under review" stage, separated from "decided" by a commitment tag
 
-**Status:** Accepted
+**Status:** Accepted — but shipped via the type fallback only; the AI `commitment` tag is deferred (see "Update 2026-06-28" below)
 **Date:** 2026-06-28
 **Extends:** ADR 0004 (committee-neutral status)
 
@@ -80,3 +80,28 @@ stored column, so `deriveStage` stays a pure, unit-testable function of its deci
   relations are rebuilt afterward (`db/apply-relations.js --rebuild`, ADR 0006).
 - Some genuinely-decisive deliberative items will read `under-review` until re-read with
   the tag; understating progress is the safer error for a resident-facing badge.
+
+## Update 2026-06-28 — shipped via the type fallback; AI tagging deferred
+
+We attempted the full in-place re-ingest to populate the `commitment` tag. It was both
+unreliable and corrosive, so the tag is shelved and the **type fallback is the active
+mechanism**. The decision (the `under-review` stage, the decided/under-review split, the
+type rule) stands; only the AI-tag *source* is deferred. Two findings drove this:
+
+1. **The classifier was wrong on the flagship case.** The Unwins Bridge Rd *safety-review
+   motion* — the textbook "agreed to investigate" example — was tagged `action` → `decided`,
+   the exact inversion the stage exists to prevent. The deterministic type rule
+   (notice-of-motion → `under-review`) gets it right. On the one case we most cared about,
+   the simple rule beat the model.
+2. **Re-ingest churns topic ids and destroys human links.** Re-reading rewords AI subjects,
+   which re-slugs the subject-derived topic id; the old id orphans and is pruned. One run
+   re-slugged ~424 of ~594 topics and deleted 37 of 96 human-confirmed subject aliases (the
+   ADR 0003 "oversight trends to zero" store). The database was rolled back with D1 Time
+   Travel and the stages were activated instead by `db/recompute-stages.js`, which derives
+   stage from existing decisions without re-reading anything.
+
+So `decisions.commitment` exists and `deriveStage` reads it, but it is **unpopulated** — the
+type fallback decides every stage today. Before the AI tag can be revived, two prerequisites
+must be met (tracked as a GitHub issue): **stable topic ids across re-reads** (don't re-slug
+an existing item's topic), and a **validated action/process classifier**. Until then, do not
+run `node db/ingest.js --force`; use `db/recompute-stages.js` when the derivation rule changes.
