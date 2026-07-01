@@ -4,6 +4,40 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-01 (session 15) — Repo made self-describing; project memory consolidated
+
+Started on the middle layer, hit a structural problem, fixed the structure first.
+
+### Middle-layer grounding (started, not finished)
+- Confirmed the plan: **gather many real resident-text examples before drafting a voice.**
+- Pulled the raw stored content for the Ashfield/Camperdown parks topic and a type-diverse
+  pile (crossings, trees, parking, governance, community). Key finding: the stored
+  `resolution` text is **three different things wearing one label** — already-plain,
+  raw council-speak, and empty/self-referential — plus live headline-vs-stage contradictions.
+- Left here: widen the pile across the unseen types (DAs, closures, events, petitions,
+  financial reports, condolences) before drawing any voice conclusions.
+
+### The structural fix (commit `5df8a73`)
+- Root cause of a mid-session mistake (assuming the project was 17 items when D1 holds 594):
+  the top-level file **duplicated** a fact from below instead of pointing at it, so it went
+  stale as the data grew.
+- **`MAP.md` per directory** (root, db, db/lib, db/migrations, functions, docs/adr, app,
+  meetings) — each names its contents and points down. Detail lives at one level.
+- **`CLAUDE.md` rewired** — points at `MAP.md` instead of duplicating the tree; "17 items"
+  framing removed; session-start now runs a live D1 count query (scale read from source, not
+  a doc). Memory + Session-logging sections updated.
+- **Project memory consolidated into the repo's (gitignored) `memory/` folder** — 25
+  scattered harness files → 10 lean files (status, direction, design, conventions,
+  research-workspace, infra + 3 reference files), browsable via `memory/MAP.md`. The harness
+  store keeps only 8 genuinely cross-project memories. Two homes, one job each.
+- Two rules baked in everywhere: **point-don't-duplicate**, and **a structural change updates
+  the MAP at its level + the parent's one-line hook.**
+- The POC "ask questions about the database with new info" now has a documented home:
+  `memory/research-workspace.md`, including the two-tier scope rule (public site = IWC only;
+  personal-research artifacts never committed).
+
+---
+
 ## 2026-07-01 (session 14) — Priority reframed to the middle layer; API-contract gap found
 
 Started as frontend polish, became a priority correction. No merges to beta/main.
