@@ -4,6 +4,37 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-01 (session 14) — Priority reframed to the middle layer; API-contract gap found
+
+Started as frontend polish, became a priority correction. No merges to beta/main.
+
+### Frontend M7 slice (WIP, parked on `claude/m7-frontend-slice`, commit `3d6e2b0`)
+- `index.html`: suburb sidebar rebuilt — grouped by Inner West Council ward using the
+  recognisable suburb names (Balmain/Stanmore/Ashfield/Leichhardt/Marrickville). Desktop:
+  sticky, internally scrollable, collapsible accordion **collapsed by default**. Mobile:
+  flat horizontal chip scroller (collapse doesn't apply). Ashfield & Annandale straddle two
+  wards → listed in both. "Other areas" bucket for non-IW / data-artifact names.
+- Fixed a real bug: nested `auto-fill` grid needed `minmax(0, 1fr)` to stop mobile
+  horizontal overflow. Verified at 1280px and 375px via the preview server.
+- `topic.html` + `app/{iw.css,iw.js,follow.js}` from prior work also committed as WIP.
+
+### Priority reframing (memory `middle_layer_priority.md`)
+- The real priority is the **middle layer** — resident-facing text + how issues link
+  together. The frontend wraps around it. But the two are intertwined: the frontend
+  redesign is what surfaced the missing middle, so expect to iterate back and forth.
+
+### The API-contract gap (the "backend isn't done" finding)
+- `functions/api/items.js` serves topics + `decisions[]` but **not** `topic_relations`
+  (73 rows live) or `images` (680 rows live) — both already populated in D1, verified via
+  `wrangler d1 execute --remote`. Two of the three stubbed topic-page sections are data
+  stranded one query away from the page. The Related-issues stub **is** the linking half of
+  the middle layer.
+- Oversight/risk section (issue #42) has no stored data — genuinely unbuilt, needs design.
+- Next session: plan the middle layer; as its first concrete piece, widen `/api/items` to
+  serve `relations[]` and `images[]`. Handoff: `/tmp/handoff-middle-layer-planning.md`.
+
+---
+
 ## 2026-06-29 (session 13) — `under-review` stage; AI re-ingest attempted, reverted, shipped via type rule
 
 Fixed the backend bug where a topic read `decided` when council had only approved an
