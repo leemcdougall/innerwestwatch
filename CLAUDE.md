@@ -2,18 +2,29 @@
 
 ## Read these at the start of every session
 
+Start with **`MAP.md`** (repo root) — the top-level index of the whole project. It points down: every
+significant directory has its own `MAP.md`, so you orient by reading maps, not by loading everything.
+From there:
+
+- `memory/MAP.md` → `memory/status.md` — **current state**, plus a live-query to verify today's data shape
 - `GOALS.md` — what we're building, architecture, module map, milestone status
 - `CONTEXT.md` — canonical domain glossary (Committee, Meeting, Document, Topic, AgendaItem)
-- `CHANGELOG.md` — what has been built and when
-- `docs/adr/` — architecture decisions with full reasoning
+- `CHANGELOG.md` — session-by-session build history
+- `docs/adr/MAP.md` — architecture decisions with full reasoning
 
 Then run:
 ```bash
-gh issue list
-wrangler whoami
+gh issue list      # open work
+wrangler whoami    # confirms Cloudflare auth is still valid
 ```
 
-`gh issue list` shows open work. `wrangler whoami` confirms Cloudflare auth is still valid.
+And get the **real data shape** — never trust a hardcoded count in a doc (that's the mistake that made
+a past session think the project was 17 items when D1 held 594). The database is the source of truth:
+```bash
+wrangler d1 execute counciltracker --remote --command \
+  "SELECT (SELECT COUNT(*) FROM topics) topics, (SELECT COUNT(*) FROM decisions) decisions, \
+          (SELECT COUNT(*) FROM topic_relations) relations, (SELECT COUNT(*) FROM images) images"
+```
 
 ---
 
@@ -34,37 +45,20 @@ Audience: neighbours who would never read a council agenda but care when road wo
 
 ---
 
-## Folder structure
+## Folder structure — the self-describing tree
 
-```
-innerwestwatch/          ← git repo root
-  CLAUDE.md              ← this file (loaded every session)
-  GOALS.md               ← milestones, architecture, module map
-  CONTEXT.md             ← domain glossary
-  CHANGELOG.md           ← session-by-session build history
-  index.html             ← home page: suburb-filtered card feed
-  wrangler.toml          ← Cloudflare Pages + D1 config
-  data/
-    items.json           ← historical record only (D1 is source of truth)
-  db/
-    schema.sql           ← D1 schema (threaded topics + decisions + topic_subjects alias store)
-    ingest.js            ← ingestion pipeline; attaches-or-creates topics by subject
-    match.js             ← offline reconciliation / backfill (supersedes the removed dedupe.js)
-    lib/
-      topics.js          ← shared subject/stage primitives (used by ingest + match)
-    migrations/          ← 0001-topic-threading.sql, 0002-thread-backfill.sql (both applied)
-    migrate.js           ← legacy: generates seed.sql from items.json
-    seed.sql             ← generated — do not edit by hand
-  functions/
-    api/
-      items.js           ← Worker: GET /api/items (serves threaded topics)
-  docs/
-    adr/                 ← architecture decision records (0003 threading, 0004 neutral status are current)
-  meetings/
-    ltf-18may2026/
-      tempe-south/
-        index.html       ← level-3 detail page — DO NOT TOUCH
-```
+The layout lives in `MAP.md` (repo root), and each directory has its own `MAP.md` describing what's in
+it and pointing further down. **Don't duplicate the tree here — read the maps.** Local root:
+`/Users/ca/Library/CloudStorage/Box-Box/Lee's Documents/innerwestwatch/` — this IS the git repo root,
+no subdirectories.
+
+**The `MAP.md` convention (this is how the project stays consistent):**
+- Every significant directory has a `MAP.md` listing its contents with a one-line hook each.
+- **Point, don't duplicate.** Detail lives at one level; parents give a hook and a pointer, never a
+  copy. History → `CHANGELOG.md`, architecture → `GOALS.md`, terms → `CONTEXT.md`, decisions →
+  `docs/adr/`, project memory → `memory/`.
+- **A structural change updates the MAP at its level + the one-line hook in its parent.** That's how a
+  change is remembered everywhere without hunting for stale references.
 
 ---
 
@@ -108,7 +102,7 @@ Workflow:
 | Node | `/usr/local/bin/node` (v22.22.3 via nvm) |
 | Worker | `GET /api/items?suburb=&street=` |
 
-Full infrastructure detail: memory file `cloudflare_access.md`.
+Full infrastructure detail: `memory/infra.md`.
 
 ---
 
@@ -152,8 +146,8 @@ Before closing out, update the following. Do not skip these even if the session 
 - New GitHub Issues opened
 - Issues closed
 
-**`project_status.md`** (memory file) — update:
-- "Current state" section with today's date
+**`memory/status.md`** — update:
+- Snapshot section with today's date and the latest live counts
 - What's built and live
 - Next steps in priority order
 
@@ -168,17 +162,23 @@ Before closing out, update the following. Do not skip these even if the session 
 
 ### Update if relevant
 
-**Memory files** — update whichever apply:
-- `cloudflare_access.md` — if any infrastructure changed (new database, new Worker, re-auth)
-- `feedback_*.md` — if Lee gave feedback on approach, corrected something, or confirmed a non-obvious decision
-- `ltf_meeting_index.md` — if item statuses changed or a new meeting was added
-- `site_design_intent.md` — if design principles evolved
+**`memory/` files** (local, gitignored) — update whichever apply, and keep `memory/MAP.md` in sync if
+you add/rename one:
+- `memory/infra.md` — if any infrastructure changed (new database, new Worker, re-auth)
+- `memory/conventions.md` — if Lee gave project-specific feedback (plain-language, issue labels, matching, verifying merges)
+- `memory/design.md` — if design principles or map issues changed
+- `memory/direction.md` — if the vision or priority shifted
+- `memory/ltf-meeting-index.md` — if item statuses changed or a new meeting was added
+- `memory/research-workspace.md` — if a new ad hoc Q&A / research example came up
+
+General working-style feedback that isn't project-specific goes in the **harness** memory store, not
+`memory/` (see the Memory system section below).
 
 ### Create if needed
 
-- New `docs/adr/XXXX-name.md` — if a hard-to-reverse, surprising, or genuinely trade-off decision was made
-- New `feedback_*.md` memory file — if new working style feedback doesn't fit an existing file
-- New `ltf_[date]_index.md` — if a new LTF meeting was added
+- New `docs/adr/XXXX-name.md` (+ a row in `docs/adr/MAP.md`) — if a hard-to-reverse, surprising, or genuinely trade-off decision was made
+- New `memory/` file (+ a row in `memory/MAP.md`) — if project memory doesn't fit an existing file
+- New reference file in `memory/` — if a new LTF meeting or dataset was added
 
 ### Commit repo file changes
 
@@ -186,18 +186,23 @@ Any changes to `CHANGELOG.md`, `GOALS.md`, `CONTEXT.md`, or `docs/adr/` should b
 
 ---
 
-## Memory system
+## Memory system — two homes, one job each
 
-Persistent memory lives at:
-`~/.claude/projects/-Users-ca-Library-CloudStorage-Box-Box-Lee-s-Documents-innerwestwatch/memory/`
+Memory is split by *what it's about*, so the two homes never overlap or drift:
 
-Key files:
-- `project_status.md` — current state, what's built, what's next
-- `cloudflare_access.md` — full Cloudflare/wrangler/D1 details
-- `github_workflow.md` — repo, hosting, branch strategy
-- `site_design_intent.md` — design principles and architecture
-- `ltf_meeting_index.md` — all 17 items from 18 May 2026 LTF with outcomes
-- `ltf_tempe_detail.md` — Tempe South street-level detail
-- `feedback_*.md` — working style preferences
+1. **Project memory → `memory/` in this repo** (local, **gitignored**, not on GitHub). Everything about
+   Inner West Watch: current state, direction, design, conventions, the research workspace, reference
+   data. Browse it via `memory/MAP.md`. This is the single home for project knowledge — read and write
+   it here.
 
-Always update `project_status.md` at the end of a session with what changed and what's still to do.
+2. **General memory → the harness store** at
+   `~/.claude/projects/-Users-ca-Library-CloudStorage-Box-Box-Lee-s-Documents-innerwestwatch/memory/`.
+   Only genuinely cross-project things: who Lee is, his machine, his general working/writing style. Its
+   `MEMORY.md` index points here, to the repo, for anything project-specific.
+
+**Why gitignored:** memory is working context, not the product. The deployed site + committed repo stay
+Inner West Council only. Personal-research inputs/outputs never get committed (see
+`memory/research-workspace.md`).
+
+At session end, update `memory/status.md` (current state + next steps) and keep `memory/MAP.md` in sync
+if files change.
