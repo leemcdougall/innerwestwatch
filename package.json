@@ -5,7 +5,7 @@
   "scripts": {
     "ingest": "node db/ingest.js",
     "ingest:meeting": "node db/ingest.js",
-    "test": "node db/lib/topics.test.js"
+    "test": "node db/lib/topics.test.js && node db/lib/labels.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0"

@@ -16,6 +16,8 @@ The transport-only digest was the first, easy-win test case. The scope is now **
 
 **Infrastructure first.** The data layer must be right — ingest, threading, the ability to ask "what's the latest on X?" and get a true answer — before the resident-facing frontend is rebuilt on top of it. See `docs/adr/0003` (persistent topics by subject threading) and `0004` (committee-neutral status).
 
+**Direction note (2026-07-04, under discussion, not yet an ADR):** session 16 reframed the middle layer around the distinct questions residents ask (change near me / what the council decided / follow a subject over time / have my say / did they follow through). Reading the data showed the followable unit residents want (e.g. the Leichhardt Aquatic Centre) sits a level above the current topic — one real-world project is spread across ~8 differently-named topics that threading can't join. Sequencing: honesty first (status/outcome semantics), then re-ingest safety (#45), then the entity/project grouping. **Honesty-first is now built** (session 18, ADR 0008): each of 651 decisions has a stored resident sentence + commitment tag, and stages reflect the actual resolution text (decided 347 / under-review 161, was 138 / 370). Next is widening `/api/items` to carry the sentence so the frontend can show it. Detail in the (gitignored) `memory/direction.md`; frontend (Milestone 7) waits on this settling.
+
 ---
 
 ## Architecture
