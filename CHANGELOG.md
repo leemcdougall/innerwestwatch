@@ -4,6 +4,66 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-04 (session 16) — Middle layer reframed around resident questions; honesty first
+
+A thinking session, no code or schema changes. Widened the reading pile, then Lee asked whether the
+whole approach was wrong given the scope has changed a few times. It reshaped how we think about the
+middle layer. Everything below is direction, captured in `memory/direction.md` and `memory/status.md`
+(no ADR yet: the reshape is agreed in principle, not locked to an implementation).
+
+### Widened the reading pile
+- Pulled raw stored content (topic headline, stage, decision headline/outcome/resolution/commitment)
+  across the types not seen in session 15: development/VPAs, road closures + events, condolences,
+  petitions, financial/governance reports.
+- Confirmed at scale what session 15 saw on a small pile: `resolution` is three things wearing one
+  label (already-plain / raw council-speak / empty). `outcome` is 22 uncontrolled words + 74 nulls.
+  Self-contradicting records (Italian Festa has three different dates; VPA "67 Victoria Road" whose
+  text describes 186).
+- The stage finding, quantified: **all 370 `under-review` topics already have a recorded outcome** —
+  none are genuinely pending. This is the documented type-fallback (deliberative type → under-review,
+  ADR 0007), but it reads to a resident as "not yet decided" when the council actually noted/adopted it.
+
+### The reframe (the substance of the session)
+- **Residents ask several distinct questions**, and the middle layer's job is to answer each honestly:
+  what's changing at a place near me / what did the council decide or spend / **what's the story with X
+  over time** (follow a subject) / what can I have a say on / did they follow through / what's coming up.
+- **The followable-subject model already exists on paper** (CONTEXT.md Topic, ADR 0003) **but the data
+  does not deliver it.** The Leichhardt Park Aquatic Centre is stored as ~8 topics across ~11 meetings
+  because each appearance has a different subject; subject-matching can't join them. The unit a resident
+  wants to follow sits a level above the current topic: a real-world entity/project/place grouping many
+  topics. That is the real "connection" half of the middle layer.
+- **Honesty first (agreed).** Two faults: unreliable status/outcome (fix first, contained, no re-read),
+  and self-contradicting frozen extractions.
+- **Home page = both search and a followable feed** (settled). What fills the feed is parked for its own
+  session (`memory/home-page-feed-question.md`).
+
+### Honest labels: approach decided + tracer bullet run
+- **Decided (via `memory/honest-labels-demo.html`):** the honest resident label can NOT be a lookup
+  from the single outcome word. Real matters prove it — "noted" hid the adoption of the whole $164.7m
+  2026/27 budget; "approved" often meant approved-to-go-to-exhibition; a "not supported" item's stored
+  text reads like a plan to do the thing (the text is the motion as proposed, not the rejection).
+- **The fix is two halves:** coarse status (decided/deferred/awaiting) from the outcome word + null
+  check (safe recompute); the resident sentence from the model READING each stored resolution.
+- **Key unlock:** the resolution text is already in D1, so the label pass reads stored text and does
+  NOT re-ingest — it is *not* blocked by #45. Only the ~74 null/contradictory resolutions need the
+  source doc (triage: a headline with a done-word = capture gap, not pending).
+- **Tracer bullet run (in-conversation, 12 varied real matters):** reading the resolution caught every
+  trap a word-lookup would misprint (budget, office-merger, endorsed-is-step-one). Bonus finding: one
+  read yields THREE outputs at once — status, sentence, and the action-vs-process `commitment` tag
+  (ADR 0007, currently unpopulated). Real-pass shape: per decision, `resolution` → `{status, sentence,
+  commitment}`.
+
+### Artifacts
+- `memory/project-state-explainer.html` — interactive one-page explainer of where the project is at.
+- `memory/honest-labels-demo.html` — interactive demo of real matters: why one-word labels mislead +
+  the null-outcome triage.
+- `memory/home-page-feed-question.md` — the parked home-page-feed design question.
+- (all three gitignored working notes; built from live D1, open in browser)
+- New sequencing in `memory/status.md`: honesty → re-ingest safety (#45) → entity/project grouping →
+  API contract → frontend rebuild.
+
+---
+
 ## 2026-07-01 (session 15) — Repo made self-describing; project memory consolidated
 
 Started on the middle layer, hit a structural problem, fixed the structure first.
