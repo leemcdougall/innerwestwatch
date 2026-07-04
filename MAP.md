@@ -28,7 +28,7 @@ in `memory/status.md` (never trust a hardcoded count — the database is the sou
 | `db/` | D1 schema, ingest, reconciliation, migrations. Source of truth for all item data. | Yes |
 | `functions/` | Cloudflare Pages Functions — the `/api/items` Worker. | Yes |
 | `docs/adr/` | Architecture decision records. | Yes |
-| `app/` | Shared frontend toolkit (CSS/JS). | Yes |
+| `app/` | Shared frontend toolkit (CSS/JS) — **parked**, lands with the Milestone 7 frontend (WIP on `claude/m7-frontend-slice`). | Yes |
 | `meetings/` | Hand-built level-3 detail pages (Tempe South is the reference — do not touch). | Yes |
 | `data/` | `items.json` — historical record only; D1 is the real source of truth. | Yes |
 | `backups/`, `review/` | D1 backups + match.js review output — large, regenerable. | No (gitignored) |
