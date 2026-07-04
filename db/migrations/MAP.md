@@ -12,5 +12,6 @@ The reasoning behind each is in `docs/adr/`.
 | `0005-populate-topic-relations.sql` | Seeded relations by topic id — **stale now** (re-ingest churns ids; superseded by `apply-relations.js`). |
 | `0006-clear-merge-duplicate-topics.sql` | Merged 4 confirmed duplicate-split topics (600 → 594). |
 | `0007-decision-commitment.sql` | Added `decisions.commitment` (action/process) for the `under-review` stage (ADR 0007). |
+| `0008-decision-resident-sentence.sql` | Added `decisions.resident_sentence` + `decisions.outcome_unclear` for the honest-label pass (ADR 0008). |
 
 **Structural change → add the row here + update the `migrations/` line in `db/MAP.md`.**

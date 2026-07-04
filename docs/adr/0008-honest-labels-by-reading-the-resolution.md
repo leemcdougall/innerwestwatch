@@ -78,3 +78,16 @@ A pass reads each Decision's stored `resolution` and produces, per decision,
 - The contradiction cases and the 74 null outcomes form a "needs the source document" queue,
   gated on #45 (stable topic ids across re-reads). For LTF works items the true "Decided"
   lands at the later Ordinary Council ratification (ADR 0003), not in the LTF minutes.
+
+## Implementation note (session 18)
+
+Decision 5's contradiction flag is **derived, not model-judged**. Asking the model whether
+the text and outcome word "match" was noisy — the first full run flagged 26 decisions,
+mostly false positives (clean deferrals, contract awards, a condolence motion). The reliable
+signal is a triple gate (`outcomeUnclear` in `db/lib/labels.js`): the outcome word is a
+refusal (`isRefusal`), a commitment was read from the text, and the text contains **no
+refusal of its own**. The model now answers only a simple extractive question
+(`text_has_refusal`); the flag is computed. This dropped 26 → 2 genuine cases and makes a
+mixed "no to X but yes to Y" resolution read by its commitment (Decided for an action, per
+decision 1), not "unclear". The design (decisions 1–6) is unchanged; only the mechanism for
+detecting a contradiction moved from model judgement to a deterministic rule.

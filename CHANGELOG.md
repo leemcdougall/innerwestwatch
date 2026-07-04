@@ -4,6 +4,49 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-04 (session 18) — Honest-label pass built and applied (ADR 0008)
+
+Built the pass ADR 0008 specified and ran it over live D1. For each of 651 decisions a model reads the
+stored `resolution` (+ `outcome`, `headline`) and returns `{commitment, resident_sentence,
+text_has_refusal}`; the coarse status stays derived by `deriveStage`, now fed the real commitment tag.
+Test-first with the `tdd` skill.
+
+- **New pure module `db/lib/labels.js`** (+ `labels.test.js`, 13 checks): the six resident labels
+  (Coming up · Held over · Being looked into · Decided · Underway · Finished), `residentLabel`,
+  `normalizeLabelResult` (guards the impure edge — commitment vocabulary, sentence cap with
+  word-boundary ellipsis), and `outcomeUnclear` (the deterministic contradiction rule).
+- **New pass `db/label-decisions.js`** — reads stored text only (not a re-ingest, so #45 does not bite).
+  Flags: `--dry-run`, `--sample` (4 traps + spread), `--limit N`, `--ids a,b,c`. Batches of 15 to Haiku.
+- **Migration `0008-decision-resident-sentence.sql`** — adds `decisions.resident_sentence` and
+  `decisions.outcome_unclear`; both additive and default-safe.
+- **`db/lib/topics.js`** — exported `isRefusal` so the pass and the stage rule share one refusal
+  definition (no drift).
+
+### The over-flagging fix (the part worth remembering)
+The first full run flagged **26** decisions "Outcome unclear" by asking the model whether text and
+outcome word "match" — noisy: it flagged clean deferrals, contract awards, and condolence motions.
+Reading the sources showed the genuine signal is deterministic: a contradiction is a **refusal outcome
+word + a real commitment + no refusal in the text itself** (`outcomeUnclear`). The model now answers a
+simple extractive question (`text_has_refusal`) and the flag is derived, not guessed. That dropped 26 →
+**2 genuine cases** (civic-offices `council-16jun2026-38`; `ltf-20apr2026-06`, whose text reads
+"Supported in-principle" against a "not supported" outcome) and, per Lee's "action wins a mixed
+resolution" ruling (ADR 0008 decision 1), reads mixed "no to X but yes to Y" decisions as **Decided**
+with a sentence covering both.
+
+### Live data after the run
+594 topics / 651 decisions unchanged. Stage split moved from `under-review 370 / decided 138` to
+**decided 347 · under-review 161 · proposed 52 · in-progress 25 · deferred 9** — the type-fallback
+over-count ADR 0008 targeted is corrected by reading the actual text. 651 resident sentences, 520
+commitment tags, 2 "Outcome unclear".
+
+### Not done this session (next steps)
+- The API (`/api/items`) does not yet serve `resident_sentence` / `outcome_unclear`; the site still
+  shows only `stage`. Widening the contract is the next step before the frontend can show the sentences.
+- The 74 null outcomes still need their three-bucket triage (agenda-only / minutes-blank / confidential),
+  which needs source re-reads (#45-gated).
+
+---
+
 ## 2026-07-04 (session 17) — Honest-label design locked (ADR 0008)
 
 A grilling session (`grill-with-docs`), no schema or pipeline code. Turned session 16's honest-label
