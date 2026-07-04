@@ -65,7 +65,12 @@ export const WORKS_TYPES = new Set((
 // A refusal IS a determination, so it reads `decided` (with the raw outcome shown
 // alongside saying "no") — never `under-review`. Symmetry with ADR 0004's decided+outcome
 // model: a knock-back is settled, not still being looked into. (ADR 0007)
-function isRefusal(o) {
+//
+// Exported so the honest-label pass (db/lib/labels.js) tests the SAME refusal words when
+// it decides whether a "no" outcome contradicts a text that resolves to act (ADR 0008) —
+// one definition, no drift between the stage rule and the contradiction rule.
+export function isRefusal(o) {
+  o = (o || '').toLowerCase();
   return o.includes('refus') || o.includes('not supported') || o.includes('withdraw')
     || o.includes('lapsed') || o.includes('reject') || o.includes('declined');
 }

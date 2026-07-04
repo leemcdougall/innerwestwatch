@@ -4,6 +4,207 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-04 (session 18) — Honest-label pass built and applied (ADR 0008)
+
+Built the pass ADR 0008 specified and ran it over live D1. For each of 651 decisions a model reads the
+stored `resolution` (+ `outcome`, `headline`) and returns `{commitment, resident_sentence,
+text_has_refusal}`; the coarse status stays derived by `deriveStage`, now fed the real commitment tag.
+Test-first with the `tdd` skill.
+
+- **New pure module `db/lib/labels.js`** (+ `labels.test.js`, 13 checks): the six resident labels
+  (Coming up · Held over · Being looked into · Decided · Underway · Finished), `residentLabel`,
+  `normalizeLabelResult` (guards the impure edge — commitment vocabulary, sentence cap with
+  word-boundary ellipsis), and `outcomeUnclear` (the deterministic contradiction rule).
+- **New pass `db/label-decisions.js`** — reads stored text only (not a re-ingest, so #45 does not bite).
+  Flags: `--dry-run`, `--sample` (4 traps + spread), `--limit N`, `--ids a,b,c`. Batches of 15 to Haiku.
+- **Migration `0008-decision-resident-sentence.sql`** — adds `decisions.resident_sentence` and
+  `decisions.outcome_unclear`; both additive and default-safe.
+- **`db/lib/topics.js`** — exported `isRefusal` so the pass and the stage rule share one refusal
+  definition (no drift).
+
+### The over-flagging fix (the part worth remembering)
+The first full run flagged **26** decisions "Outcome unclear" by asking the model whether text and
+outcome word "match" — noisy: it flagged clean deferrals, contract awards, and condolence motions.
+Reading the sources showed the genuine signal is deterministic: a contradiction is a **refusal outcome
+word + a real commitment + no refusal in the text itself** (`outcomeUnclear`). The model now answers a
+simple extractive question (`text_has_refusal`) and the flag is derived, not guessed. That dropped 26 →
+**2 genuine cases** (civic-offices `council-16jun2026-38`; `ltf-20apr2026-06`, whose text reads
+"Supported in-principle" against a "not supported" outcome) and, per Lee's "action wins a mixed
+resolution" ruling (ADR 0008 decision 1), reads mixed "no to X but yes to Y" decisions as **Decided**
+with a sentence covering both.
+
+### Live data after the run
+594 topics / 651 decisions unchanged. Stage split moved from `under-review 370 / decided 138` to
+**decided 347 · under-review 161 · proposed 52 · in-progress 25 · deferred 9** — the type-fallback
+over-count ADR 0008 targeted is corrected by reading the actual text. 651 resident sentences, 520
+commitment tags, 2 "Outcome unclear".
+
+### Not done this session (next steps)
+- The API (`/api/items`) does not yet serve `resident_sentence` / `outcome_unclear`; the site still
+  shows only `stage`. Widening the contract is the next step before the frontend can show the sentences.
+- The 74 null outcomes still need their three-bucket triage (agenda-only / minutes-blank / confidential),
+  which needs source re-reads (#45-gated).
+
+---
+
+## 2026-07-04 (session 17) — Honest-label design locked (ADR 0008)
+
+A grilling session (`grill-with-docs`), no schema or pipeline code. Turned session 16's honest-label
+approach into a fully specified design, stress-tested against real data, and captured it as **ADR 0008**
+plus inline `CONTEXT.md` updates. Six decisions locked:
+
+1. **The read judges commitment (`action` vs `process`) itself** and drives the badge — reviving ADR
+   0007's deferred tag through the safe stored-text door (reading stored `resolution` is not a re-ingest,
+   so #45 does not bite). Both reasons 0007 deferred it are now gone.
+2. **Six resident labels:** Coming up · Held over · Being looked into · Decided · Underway · Finished.
+3. **Resident sentence: one-to-two sentences, impact first** (writing rules), stored per decision.
+4. **One sentence + label per decision** — latest on the card, full trail on the topic page (shown with a
+   real six-appearance example, the Leichhardt Aquatic Centre, every one recorded as "noted").
+5. **A "no" reads as a "no", rejection first;** when resolution text and outcome word disagree, flag
+   "Outcome unclear", don't guess (real case: June 2026 civic-offices motion).
+6. **Nulls never upgraded to "Decided" from the headline.** Proven by *reading the source*: the LTF
+   15 Jun 2026 agenda's "be approved" recommendations produced "approved" headlines with no vote. The
+   74 nulls split three ways (agenda-only → Coming up; minutes-blank → unclear; confidential → honest
+   note). The 15 Jun minutes now exist on infocouncil — that meeting is stale, ingested before its
+   outcomes were published.
+
+### Method note
+Reading the actual infocouncil source (not just stored fields) overturned two of my own recommendations
+mid-session — the "trust an approved headline" shortcut was wrong, and the civic-offices "rejection" is
+actually a text-vs-outcome contradiction. Honesty-first applied to the design process itself.
+
+### Docs
+- New `docs/adr/0008-honest-labels-by-reading-the-resolution.md` (+ MAP row; 0007 marked extended).
+- `CONTEXT.md`: Stage table with resident labels; resident-sentence definition; sentence granularity;
+  honesty rules for rejections, contradictions, and null outcomes.
+
+---
+
+## 2026-07-04 (session 16) — Middle layer reframed around resident questions; honesty first
+
+A thinking session, no code or schema changes. Widened the reading pile, then Lee asked whether the
+whole approach was wrong given the scope has changed a few times. It reshaped how we think about the
+middle layer. Everything below is direction, captured in `memory/direction.md` and `memory/status.md`
+(no ADR yet: the reshape is agreed in principle, not locked to an implementation).
+
+### Widened the reading pile
+- Pulled raw stored content (topic headline, stage, decision headline/outcome/resolution/commitment)
+  across the types not seen in session 15: development/VPAs, road closures + events, condolences,
+  petitions, financial/governance reports.
+- Confirmed at scale what session 15 saw on a small pile: `resolution` is three things wearing one
+  label (already-plain / raw council-speak / empty). `outcome` is 22 uncontrolled words + 74 nulls.
+  Self-contradicting records (Italian Festa has three different dates; VPA "67 Victoria Road" whose
+  text describes 186).
+- The stage finding, quantified: **all 370 `under-review` topics already have a recorded outcome** —
+  none are genuinely pending. This is the documented type-fallback (deliberative type → under-review,
+  ADR 0007), but it reads to a resident as "not yet decided" when the council actually noted/adopted it.
+
+### The reframe (the substance of the session)
+- **Residents ask several distinct questions**, and the middle layer's job is to answer each honestly:
+  what's changing at a place near me / what did the council decide or spend / **what's the story with X
+  over time** (follow a subject) / what can I have a say on / did they follow through / what's coming up.
+- **The followable-subject model already exists on paper** (CONTEXT.md Topic, ADR 0003) **but the data
+  does not deliver it.** The Leichhardt Park Aquatic Centre is stored as ~8 topics across ~11 meetings
+  because each appearance has a different subject; subject-matching can't join them. The unit a resident
+  wants to follow sits a level above the current topic: a real-world entity/project/place grouping many
+  topics. That is the real "connection" half of the middle layer.
+- **Honesty first (agreed).** Two faults: unreliable status/outcome (fix first, contained, no re-read),
+  and self-contradicting frozen extractions.
+- **Home page = both search and a followable feed** (settled). What fills the feed is parked for its own
+  session (`memory/home-page-feed-question.md`).
+
+### Honest labels: approach decided + tracer bullet run
+- **Decided (via `memory/honest-labels-demo.html`):** the honest resident label can NOT be a lookup
+  from the single outcome word. Real matters prove it — "noted" hid the adoption of the whole $164.7m
+  2026/27 budget; "approved" often meant approved-to-go-to-exhibition; a "not supported" item's stored
+  text reads like a plan to do the thing (the text is the motion as proposed, not the rejection).
+- **The fix is two halves:** coarse status (decided/deferred/awaiting) from the outcome word + null
+  check (safe recompute); the resident sentence from the model READING each stored resolution.
+- **Key unlock:** the resolution text is already in D1, so the label pass reads stored text and does
+  NOT re-ingest — it is *not* blocked by #45. Only the ~74 null/contradictory resolutions need the
+  source doc (triage: a headline with a done-word = capture gap, not pending).
+- **Tracer bullet run (in-conversation, 12 varied real matters):** reading the resolution caught every
+  trap a word-lookup would misprint (budget, office-merger, endorsed-is-step-one). Bonus finding: one
+  read yields THREE outputs at once — status, sentence, and the action-vs-process `commitment` tag
+  (ADR 0007, currently unpopulated). Real-pass shape: per decision, `resolution` → `{status, sentence,
+  commitment}`.
+
+### Artifacts
+- `memory/project-state-explainer.html` — interactive one-page explainer of where the project is at.
+- `memory/honest-labels-demo.html` — interactive demo of real matters: why one-word labels mislead +
+  the null-outcome triage.
+- `memory/home-page-feed-question.md` — the parked home-page-feed design question.
+- (all three gitignored working notes; built from live D1, open in browser)
+- New sequencing in `memory/status.md`: honesty → re-ingest safety (#45) → entity/project grouping →
+  API contract → frontend rebuild.
+
+---
+
+## 2026-07-01 (session 15) — Repo made self-describing; project memory consolidated
+
+Started on the middle layer, hit a structural problem, fixed the structure first.
+
+### Middle-layer grounding (started, not finished)
+- Confirmed the plan: **gather many real resident-text examples before drafting a voice.**
+- Pulled the raw stored content for the Ashfield/Camperdown parks topic and a type-diverse
+  pile (crossings, trees, parking, governance, community). Key finding: the stored
+  `resolution` text is **three different things wearing one label** — already-plain,
+  raw council-speak, and empty/self-referential — plus live headline-vs-stage contradictions.
+- Left here: widen the pile across the unseen types (DAs, closures, events, petitions,
+  financial reports, condolences) before drawing any voice conclusions.
+
+### The structural fix (commit `5df8a73`)
+- Root cause of a mid-session mistake (assuming the project was 17 items when D1 holds 594):
+  the top-level file **duplicated** a fact from below instead of pointing at it, so it went
+  stale as the data grew.
+- **`MAP.md` per directory** (root, db, db/lib, db/migrations, functions, docs/adr, app,
+  meetings) — each names its contents and points down. Detail lives at one level.
+- **`CLAUDE.md` rewired** — points at `MAP.md` instead of duplicating the tree; "17 items"
+  framing removed; session-start now runs a live D1 count query (scale read from source, not
+  a doc). Memory + Session-logging sections updated.
+- **Project memory consolidated into the repo's (gitignored) `memory/` folder** — 25
+  scattered harness files → 10 lean files (status, direction, design, conventions,
+  research-workspace, infra + 3 reference files), browsable via `memory/MAP.md`. The harness
+  store keeps only 8 genuinely cross-project memories. Two homes, one job each.
+- Two rules baked in everywhere: **point-don't-duplicate**, and **a structural change updates
+  the MAP at its level + the parent's one-line hook.**
+- The POC "ask questions about the database with new info" now has a documented home:
+  `memory/research-workspace.md`, including the two-tier scope rule (public site = IWC only;
+  personal-research artifacts never committed).
+
+---
+
+## 2026-07-01 (session 14) — Priority reframed to the middle layer; API-contract gap found
+
+Started as frontend polish, became a priority correction. No merges to beta/main.
+
+### Frontend M7 slice (WIP, parked on `claude/m7-frontend-slice`, commit `3d6e2b0`)
+- `index.html`: suburb sidebar rebuilt — grouped by Inner West Council ward using the
+  recognisable suburb names (Balmain/Stanmore/Ashfield/Leichhardt/Marrickville). Desktop:
+  sticky, internally scrollable, collapsible accordion **collapsed by default**. Mobile:
+  flat horizontal chip scroller (collapse doesn't apply). Ashfield & Annandale straddle two
+  wards → listed in both. "Other areas" bucket for non-IW / data-artifact names.
+- Fixed a real bug: nested `auto-fill` grid needed `minmax(0, 1fr)` to stop mobile
+  horizontal overflow. Verified at 1280px and 375px via the preview server.
+- `topic.html` + `app/{iw.css,iw.js,follow.js}` from prior work also committed as WIP.
+
+### Priority reframing (memory `middle_layer_priority.md`)
+- The real priority is the **middle layer** — resident-facing text + how issues link
+  together. The frontend wraps around it. But the two are intertwined: the frontend
+  redesign is what surfaced the missing middle, so expect to iterate back and forth.
+
+### The API-contract gap (the "backend isn't done" finding)
+- `functions/api/items.js` serves topics + `decisions[]` but **not** `topic_relations`
+  (73 rows live) or `images` (680 rows live) — both already populated in D1, verified via
+  `wrangler d1 execute --remote`. Two of the three stubbed topic-page sections are data
+  stranded one query away from the page. The Related-issues stub **is** the linking half of
+  the middle layer.
+- Oversight/risk section (issue #42) has no stored data — genuinely unbuilt, needs design.
+- Next session: plan the middle layer; as its first concrete piece, widen `/api/items` to
+  serve `relations[]` and `images[]`. Handoff: `/tmp/handoff-middle-layer-planning.md`.
+
+---
+
 ## 2026-06-29 (session 13) — `under-review` stage; AI re-ingest attempted, reverted, shipped via type rule
 
 Fixed the backend bug where a topic read `decided` when council had only approved an
