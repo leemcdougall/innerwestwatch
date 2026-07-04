@@ -68,6 +68,13 @@ CREATE TABLE IF NOT EXISTS topics (
 -- commitment: for a go-ahead outcome, what it commits to — 'action' (a concrete change)
 --   or 'process' (only investigate/review/receive/note). Splits `decided` from
 --   `under-review` in deriveStage. Null when pending or for a refusal/deferral. ADR 0007.
+--   Populated by db/label-decisions.js reading the stored resolution text (ADR 0008).
+-- resident_sentence: the one-to-two-sentence, impact-first plain-language summary a resident
+--   reads on the card/trail — distinct from the terse `headline`. Written by the honest-label
+--   pass (db/label-decisions.js) from the stored resolution. Null until read. ADR 0008.
+-- outcome_unclear: 1 when the resolution text contradicts the stored `outcome` word (a "no"
+--   outcome against a text that resolves to act, with no refusal in the text itself); the
+--   card then shows "Outcome unclear" instead of a derived label. 0 otherwise. ADR 0008.
 CREATE TABLE IF NOT EXISTS decisions (
     id          TEXT PRIMARY KEY,              -- e.g. "ltf-18may2026-04"
     meeting_id  TEXT NOT NULL REFERENCES meetings(id),
@@ -77,7 +84,9 @@ CREATE TABLE IF NOT EXISTS decisions (
     resolution  TEXT,                          -- plain-language outcome detail, AI-generated; null if pending
     outcome     TEXT,                          -- raw determination string; null if pending
     works_start TEXT,                          -- ISO 8601 date works begin; null if unknown
-    commitment  TEXT CHECK(commitment IN ('action', 'process'))  -- ADR 0007; null if pending/refused
+    commitment  TEXT CHECK(commitment IN ('action', 'process')),  -- ADR 0007; null if pending/refused
+    resident_sentence TEXT,                    -- ADR 0008; resident-facing summary, null until read
+    outcome_unclear   INTEGER NOT NULL DEFAULT 0  -- ADR 0008; 1 = text contradicts the outcome word
 );
 
 CREATE INDEX IF NOT EXISTS idx_decisions_topic ON decisions(topic_id);
