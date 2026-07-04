@@ -4,6 +4,39 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-04 (session 17) — Honest-label design locked (ADR 0008)
+
+A grilling session (`grill-with-docs`), no schema or pipeline code. Turned session 16's honest-label
+approach into a fully specified design, stress-tested against real data, and captured it as **ADR 0008**
+plus inline `CONTEXT.md` updates. Six decisions locked:
+
+1. **The read judges commitment (`action` vs `process`) itself** and drives the badge — reviving ADR
+   0007's deferred tag through the safe stored-text door (reading stored `resolution` is not a re-ingest,
+   so #45 does not bite). Both reasons 0007 deferred it are now gone.
+2. **Six resident labels:** Coming up · Held over · Being looked into · Decided · Underway · Finished.
+3. **Resident sentence: one-to-two sentences, impact first** (writing rules), stored per decision.
+4. **One sentence + label per decision** — latest on the card, full trail on the topic page (shown with a
+   real six-appearance example, the Leichhardt Aquatic Centre, every one recorded as "noted").
+5. **A "no" reads as a "no", rejection first;** when resolution text and outcome word disagree, flag
+   "Outcome unclear", don't guess (real case: June 2026 civic-offices motion).
+6. **Nulls never upgraded to "Decided" from the headline.** Proven by *reading the source*: the LTF
+   15 Jun 2026 agenda's "be approved" recommendations produced "approved" headlines with no vote. The
+   74 nulls split three ways (agenda-only → Coming up; minutes-blank → unclear; confidential → honest
+   note). The 15 Jun minutes now exist on infocouncil — that meeting is stale, ingested before its
+   outcomes were published.
+
+### Method note
+Reading the actual infocouncil source (not just stored fields) overturned two of my own recommendations
+mid-session — the "trust an approved headline" shortcut was wrong, and the civic-offices "rejection" is
+actually a text-vs-outcome contradiction. Honesty-first applied to the design process itself.
+
+### Docs
+- New `docs/adr/0008-honest-labels-by-reading-the-resolution.md` (+ MAP row; 0007 marked extended).
+- `CONTEXT.md`: Stage table with resident labels; resident-sentence definition; sentence granularity;
+  honesty rules for rejections, contradictions, and null outcomes.
+
+---
+
 ## 2026-07-04 (session 16) — Middle layer reframed around resident questions; honesty first
 
 A thinking session, no code or schema changes. Widened the reading pile, then Lee asked whether the

@@ -65,14 +65,26 @@ A single appearance of a Topic at a specific Meeting — what was decided that d
 
 Each Decision carries its own per-appearance **headline** (plain-language summary), a raw **Outcome** (below), the resolution detail text, and a works-start date. Every Decision points to a Topic (the threading FK is not null).
 
+Each Decision also carries a **resident sentence** (session 17): a one-to-two-sentence plain-English explanation, written by a model reading the stored `resolution`, that leads with what it means for a resident ("Nothing's changing yet — the council will investigate...") before the process. Style: impact first, jargon spelled out, per the project writing rules. This is distinct from the `headline` (a short title) — the sentence explains, the headline names.
+
+**Where the sentence shows (session 17):** one sentence + label per Decision. On the feed/card, only the Topic's **latest** Decision (its current state). On the Topic's own page, the **full trail** — every Decision, newest first, each with its own sentence, label and date. The trail is what answers "what changed since last time?" and "did the council follow through?"; collapsing a Topic to one summary sentence would discard it.
+
 ---
 
 ## Stage and Outcome
 
 Committee-neutral status, modelled on two axes (ADR 0004). The old LTF-specific vocabulary (`forum-yes`, `works-coming`, …) is retired.
 
-**Stage** lives on the Topic — the lifecycle position a resident skims, derived from the most-advanced point any of its decisions reached:
-`proposed` · `deferred` · `under-review` · `decided` · `in-progress` · `completed`.
+**Stage** lives on the Topic — the lifecycle position a resident skims, derived from the most-advanced point any of its decisions reached. Six stages, each with a plain-English label a resident actually sees (draft wording, session 17):
+
+| stage (internal) | resident label | plain meaning |
+|---|---|---|
+| `proposed` | Coming up | On an agenda, not voted on yet |
+| `deferred` | Held over | Voted to push to a later meeting |
+| `under-review` | Being looked into | Agreed to investigate and report back — nothing being built |
+| `decided` | Decided | A final call was made — yes (build/adopt) or no (rejected); the outcome says which |
+| `in-progress` | Underway | Work has actually started |
+| `completed` | Finished | Done and delivered (defined but never derived — no end-signal in the source) |
 
 `under-review` (resident label "Under review") sits between `deferred` and `decided`. It is the stage for a decision the council *approved* but only as a **process step** — investigate, review, prepare a report, receive or note information — not as a concrete change. It stops an "approved to look into it" motion from reading the same as "approved to build it". See **Commitment** below and ADR 0007.
 
@@ -80,9 +92,21 @@ Committee-neutral status, modelled on two axes (ADR 0004). The old LTF-specific 
 
 **Outcome** lives on the Decision — the raw determination in the council's own terms: `approved`, `approved with amendments`, `refused`, `not supported`, `deferred`, `adopted`, `noted`, `contract executed`, etc. Null until a determination is recorded. A refusal (`refused`, `not supported`, `withdrawn`) reads as stage `decided` with the outcome shown alongside — a determination *was* made; the outcome says it was "no" (ADR 0004).
 
+**Honesty rules for the resident sentence (session 17):**
+- The read always gets the outcome word alongside the `resolution` text, and describes what the council *decided*, not what was proposed. For a "no", the rejection leads: "The council rejected a proposal to..." — never the proposal phrased as if it happened. (The old AI `headline` states the motion *as proposed*, so it reads as if a rejected item is going ahead; the resident sentence supersedes it on the card.)
+- **When the text and the outcome word disagree** — the resolution reads as an adopted action but the outcome says "no" (or vice versa; e.g. the June 2026 civic-offices motion whose full text "resolves to investigate... requests a report in 4 months" is stored against outcome `not supported`) — the pass does **not** guess. It flags the Decision for a source check and shows "Outcome unclear — see the original agenda". These contradiction cases join the null-outcome rows as the "needs the source document" pile, where issue #45 bites.
+
+**Null outcomes are never upgraded to "Decided" from the headline (session 17).** A done-word in a stored `headline` ("...approved", "...cut") is usually the *officer's recommendation* leaking from the agenda, not a recorded vote — verified against the LTF 15 Jun 2026 agenda, whose "be approved" recommendations produced "approved" headlines with no minutes ingested. The 74 null-outcome decisions split three ways by what the record actually holds:
+- **Agenda only, no minutes in our data** → resident label **Coming up** (it is a proposal awaiting a vote). Fix = ingest the minutes, which for older meetings now exist on infocouncil (source re-read, #45-gated).
+- **Minutes published but this item's outcome not captured** → **Outcome unclear — see the original**, queued for source re-read.
+- **Confidential session / no determination recorded** → an honest note ("Discussed in confidential session" / "No decision recorded").
+Because the LTF only *recommends*, the true "Decided" for its works items lands at the later Ordinary Council ratification (the LTF → Council thread, ADR 0003).
+
 **Commitment** is the action-versus-process nature of an approved Decision: `action` (commits to a concrete change — build, install, adopt a plan, execute a contract) or `process` (commits only to investigate / review / receive / note). It is what would separate `decided` from `under-review` per decision. The intent is for the AI to tag it while reading the minutes, with `action` winning when a resolution does both.
 
-In practice the tag is **currently unpopulated**: the AI classifier proved unreliable (it inverted the flagship case) and the re-ingest that would fill it churns topic ids and destroys human aliases, so it is deferred (ADR 0007). Today every stage is decided by the **type fallback**: deliberative types (motion, notice-of-motion, report) → `under-review`, works types (crossing, parking, latm, …) → `decided`. Stages are recomputed from existing decisions by `db/recompute-stages.js`, never by re-reading source documents.
+In practice the tag was long **unpopulated**: the first AI classifier proved unreliable (it inverted the flagship case) and the re-ingest that would fill it churns topic ids and destroys human aliases, so it was deferred (ADR 0007). The type fallback filled in meanwhile: deliberative types (motion, notice-of-motion, report) → `under-review`, works types (crossing, parking, latm, …) → `decided`.
+
+**As of the honest-label pass (2026-07-04, session 17):** `commitment` is populated by a model that **reads the already-stored `resolution` text** — not by a re-ingest, so it does not touch topic ids or aliases (#45 does not bite). Reading the full resolution, rather than the single outcome word or a keyword rule, is what lets the model tell "approved to build it" (`action`) from "approved to look into it" (`process`). This revives ADR 0007's mechanism through a safe door. `deriveStage` already reads `commitment`; stages are still recomputed from existing decisions by `db/recompute-stages.js`, never by re-reading source documents.
 
 ---
 
