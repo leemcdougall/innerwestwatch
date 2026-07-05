@@ -26,7 +26,11 @@
  *     { id, meeting, item, date, minutesDate, headline, outcome,
  *       resolution, residentSentence, worksStart, commitment,
  *       outcomeUnclear, label, agendaUrl, minutesUrl }
- *   ]
+ *   ],
+ *   relations: [ { topicId, subject, kind, relation } ],  // kind = parent-child|related|supersedes;
+ *                                                          // relation = this topic's view of the other
+ *                                                          // (parent|child|related|supersedes|superseded-by)
+ *   images: [ url, … ]                                     // infocouncil diagram/plan URLs, ordered
  * }
  *
  * stage is the committee-neutral lifecycle on the topic (ADR 0004):
@@ -151,6 +155,47 @@ export async function onRequestGet({ request, env }) {
       });
     }
 
+    const idSet = new Set(ids);
+
+    // ── Related topics (ADR 0005) ─────────────────────────────────────────────
+    // Only ~73 relations exist total, so fetch them ALL in one join (no IN-list to chunk)
+    // and attach in JS. A relation connects topic_a↔topic_b; `topic_a` is the parent for a
+    // 'parent-child' link (human-relations.json convention). For each matched topic we serve
+    // the OTHER topic plus that topic's role relative to it, so the frontend can say
+    // "part of" / "leads to" without re-deriving direction.
+    const OTHER_ROLE = {
+      'parent-child': { a: 'child',      b: 'parent' },        // this=a → other is the child
+      'supersedes':   { a: 'supersedes', b: 'superseded-by' }, // this=a → this supersedes other
+      'related':      { a: 'related',    b: 'related' },        // symmetric
+    };
+    const relByTopic = new Map(ids.map(id => [id, []]));
+    const { results: relRows } = await env.DB.prepare(`
+      SELECT r.topic_a AS a, r.topic_b AS b, r.kind AS kind,
+             ta.subject AS aSubject, tb.subject AS bSubject
+      FROM topic_relations r
+      JOIN topics ta ON ta.id = r.topic_a
+      JOIN topics tb ON tb.id = r.topic_b
+    `).all();
+    for (const r of relRows) {
+      const roles = OTHER_ROLE[r.kind] || OTHER_ROLE.related;
+      if (idSet.has(r.a)) relByTopic.get(r.a).push({ topicId: r.b, subject: r.bSubject, kind: r.kind, relation: roles.a });
+      if (idSet.has(r.b)) relByTopic.get(r.b).push({ topicId: r.a, subject: r.aSubject, kind: r.kind, relation: roles.b });
+    }
+
+    // ── Key images per topic ──────────────────────────────────────────────────
+    // Chunked by topic_id like decisions (680 rows across topics). Ordered by `sequence`;
+    // served as a plain URL list — the images are just infocouncil diagram/plan URLs.
+    const imgByTopic = new Map(ids.map(id => [id, []]));
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const placeholders = slice.map(() => '?').join(',');
+      const { results } = await env.DB.prepare(
+        `SELECT topic_id AS topicId, url FROM images
+           WHERE topic_id IN (${placeholders}) ORDER BY topic_id, sequence`
+      ).bind(...slice).all();
+      for (const r of results) imgByTopic.get(r.topicId)?.push(r.url);
+    }
+
     const topics = topicRows.map(t => {
       const decisions = (byTopic.get(t.id) || []).map(d => ({
         ...d,
@@ -178,6 +223,8 @@ export async function onRequestGet({ request, env }) {
         lastSeen:  t.lastSeen,
         detailPage:t.detailPage,
         decisions,
+        relations: relByTopic.get(t.id) || [],
+        images:    imgByTopic.get(t.id) || [],
       };
     });
 
