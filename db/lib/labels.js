@@ -29,6 +29,13 @@ export const UNCLEAR_LABEL = 'Outcome unclear';
 // pending; it never was. Honest: the community raised it, Council heard it, nothing decided.
 export const RAISED_LABEL = 'Raised at public forum';
 
+// Shown for a Question on Notice — a councillor's question answered in writing outside the
+// meeting, with no vote. The correct-in-place sweep (db/correct-in-place.js, ADR 0009) stores
+// these with outcome = "answered". Without this they would read "Coming up" as if a decision
+// were pending; there is no decision, only a written answer. This is a decision-level override
+// (like RAISED_LABEL) — it is not one of the six neutral lifecycle stages.
+export const ANSWERED_LABEL = 'Answered';
+
 // Whether a decision's stored OUTCOME WORD genuinely contradicts its resolution TEXT
 // (ADR 0008 decision 5). Derived, not model-judged: asking the model "do these disagree?"
 // proved noisy (it flagged clean deferrals and contract awards). The reliable signal is a
@@ -52,6 +59,8 @@ export function outcomeUnclear({ outcome, commitment, textHasRefusal } = {}) {
 // tag now feeds deriveStage for real, reviving ADR 0007) and mapped to the resident word.
 export function residentLabel(decision, type) {
   if (decision.outcome_unclear) return UNCLEAR_LABEL;
+  // A Question on Notice was answered in writing, not decided by a vote.
+  if (decision.outcome === 'answered') return ANSWERED_LABEL;
   // A public-forum address with no recorded outcome was never a decision in progress.
   if (decision.publicForum && !decision.outcome) return RAISED_LABEL;
   return RESIDENT_LABEL[deriveStage([decision], type)];

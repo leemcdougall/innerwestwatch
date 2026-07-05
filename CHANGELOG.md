@@ -4,6 +4,71 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-05 (session 19) — Correct-in-place sweep: the #61 diagnosis + honest deferred/answered labels (ADR 0009)
+
+Built the correct-in-place sweep (ADR 0009, item 1) and ran it on the two meetings behind issue #61.
+The headline is the diagnosis: **#61 was never a threading bug.** Reading the actual source overturned
+the handoff's framing.
+
+### What #61 actually was
+The handoff said "18 decisions tagged to meetings whose minutes don't contain them," suspected
+mis-assignment or a threading bug. Reading `council-19aug2025`'s agenda + minutes showed the opposite:
+- Our item numbers **match the real agenda exactly** (our item 34 = agenda "Item 34 Birchgrove Oval
+  Floodlighting"), so nothing is mis-assigned or mis-numbered — no threading bug.
+- 12 of the 16 were **deferred as a batch** by one recorded procedural motion ("That Council defer
+  Items 15, 16, 18, 30, 31, 34, 41, 42, 44, 47, 48, 52, 56, 62 and 66 to … 23 September 2025. Motion
+  Carried"). The first ingest never read that motion.
+- The rest were a withdrawn Notice of Motion (item 57, Mayor ruled it redundant) and Questions on
+  Notice (58/59/60) that are answered in writing, never voted on.
+- The same deferral motion also named items **41, 42, 44**, which our data wrongly held as
+  approved/approved/not-supported — caught only because the sweep re-checks *every* decision, not just
+  the blanks.
+
+### The sweep — `db/correct-in-place.js`
+Generalises `db/backfill-outcomes.js` from "fill nulls" to "re-check every decision against its source".
+Re-reads a meeting's agenda + minutes, a model reports each item's **kind** (report / notice-of-motion /
+question-on-notice / confidential) and **status** (decided / answered / not-reached / deferred /
+withdrawn / lost / no-determination), then UPDATEs existing rows **by id** — never re-slugs a topic,
+never touches human aliases (so #45 cannot fire; not a re-ingest). Key safety choices:
+- **Determination-class gate.** A row is rewritten only when its determination class moves
+  (none → held-over, passed → held-over, …), never on a label wobble from a re-rolled commitment tag.
+  This stopped ~10 correct rows (e.g. a condolence motion) from being churned to a worse label — "a
+  wrong change is worse than a stale one".
+- **Refuses to fabricate.** A confidential closed-session item (the open minutes show only the
+  procedural motion to go in-camera) is left untouched rather than stamped "carried".
+- Batches of 15 to Haiku; `--meeting`, `--dry-run`, `--only-null`. Agent-in-the-loop: dry-run and read
+  the diffs against source before every apply.
+
+### New honest label — "Answered"
+Per Lee's call, Questions on Notice and not-reached motions read differently: a QoN → **"Answered"**
+(answered in writing, no vote); a not-reached/deferred motion → **"Held over"** (already in the
+vocabulary). Added `ANSWERED_LABEL` to `db/lib/labels.js` (a decision-level override, like
+`RAISED_LABEL`) + a stage rank for `"answered"` in `db/lib/topics.js`, + a unit test (labels.test.js now
+16 checks). The QoN resident sentence is deterministic, so a model mis-wording ("not reached") can never
+misrepresent it.
+
+### Applied to live D1
+- `council-19aug2025`: **19 corrections** (15 → Held over incl. the wrongly-approved 41/42/44; 1
+  withdrawn → Decided; 3 QoN → Answered). 46 rows correctly left unchanged.
+- `council-17feb2026`: **1 correction** (item 48, White's Creek QoN → Answered).
+- `council-17feb2026-extra`: confidential GM presentation left as-is (no public outcome).
+- Ran `db/recompute-stages.js` after each apply. Null outcomes **53 → 36**, and every remaining null is
+  now honest: 23 agenda-only ("Coming up"), 12 public-forum ("Raised at public forum"), 1 confidential.
+
+### Issues
+- **#61 resolved** — diagnosed (no threading bug) and corrected; the one leftover is a lawful
+  confidential item, not a data error.
+- **#60** — its two known cases were hand-fixed in session 18; the sweep adds broader coverage but does
+  not yet re-check a lost-motion's *resolution text* when the outcome word already reads "lost"
+  (class-gate skips refused→refused). Left open with a note.
+
+### Follow-ups noted
+- Closed-session items need a product decision on an honest label ("Decided in closed session"?) — one
+  item today. - The stored deferral word varies (`deferred` vs `held over`) though both render "Held
+  over"; could be normalised. - Run the sweep across the other meetings for latent extraction errors.
+
+---
+
 ## 2026-07-04 (session 18) — Honest labels end-to-end: pass, API contract, null triage (ADR 0008)
 
 A long session that took the honest-label work from stored design to live, resident-facing data: built
