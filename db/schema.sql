@@ -128,6 +128,25 @@ CREATE TABLE IF NOT EXISTS images (
     sequence  INTEGER NOT NULL DEFAULT 0
 );
 
+-- ─── topic_relations ─────────────────────────────────────────────────────────
+-- Connects topics that RELATE but are not the same issue (ADR 0005): the LTF→Council
+-- ratification arc, two crossings at one intersection, a superseding proposal. Threaded,
+-- never merged. `topic_a` is the parent for a 'parent-child' link; 'related' is symmetric.
+-- Materialised from db/human-relations.json by db/apply-relations.js (added in migration
+-- 0004; kept here so a from-scratch rebuild matches live D1). Served by /api/items.
+CREATE TABLE IF NOT EXISTS topic_relations (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic_a    TEXT NOT NULL REFERENCES topics(id),
+    topic_b    TEXT NOT NULL REFERENCES topics(id),
+    kind       TEXT NOT NULL CHECK(kind IN ('parent-child', 'related', 'supersedes')),
+    note       TEXT,                                  -- one-line human rationale (audit)
+    source     TEXT NOT NULL DEFAULT 'human' CHECK(source IN ('human', 'auto')),
+    created_at TEXT NOT NULL,
+    UNIQUE(topic_a, topic_b, kind)                    -- idempotent: re-confirming a link is a no-op
+);
+CREATE INDEX IF NOT EXISTS idx_topic_relations_a ON topic_relations(topic_a);
+CREATE INDEX IF NOT EXISTS idx_topic_relations_b ON topic_relations(topic_b);
+
 -- ─── topic_merge_log ─────────────────────────────────────────────────────────
 -- Append-only audit log, retained from the ADR 0002 era for history. Not queried
 -- by the API. New linking is recorded in topic_subjects, not here.
