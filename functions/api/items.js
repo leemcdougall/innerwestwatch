@@ -20,21 +20,30 @@
  *
  * Response shape per topic:
  * {
- *   id, subject, type, headline, stage,
+ *   id, subject, type, headline, stage, label,
  *   suburbs[], streets[], firstSeen, lastSeen, detailPage,
  *   decisions: [
  *     { id, meeting, item, date, minutesDate, headline, outcome,
- *       resolution, worksStart, agendaUrl, minutesUrl }
+ *       resolution, residentSentence, worksStart, commitment,
+ *       outcomeUnclear, label, agendaUrl, minutesUrl }
  *   ]
  * }
  *
  * stage is the committee-neutral lifecycle on the topic (ADR 0004):
  *   proposed | deferred | decided | in-progress | completed.
+ * label is the resident-facing word for that lifecycle point (ADR 0008): the topic's
+ *   `label` maps its `stage`; each decision's `label` is derived from its own outcome and
+ *   is "Outcome unclear" when the resolution text contradicts the outcome word. The six-word
+ *   vocabulary and the derivation both live in db/lib/labels.js — one source of truth.
+ * residentSentence is the one-to-two-sentence plain-language summary a resident reads
+ *   (ADR 0008), distinct from the terse per-decision `headline`.
  * outcome is the raw determination, per decision (approved, refused, adopted, …).
  * minutesDate is a decision's meeting date when minutes_published=1, else null.
  *
  * CORS: Access-Control-Allow-Origin: * so static pages can call this cross-origin.
  */
+
+import { residentLabel, RESIDENT_LABEL } from '../../db/lib/labels.js';
 
 export async function onRequestGet({ request, env }) {
   const url    = new URL(request.url);
@@ -102,7 +111,10 @@ export async function onRequestGet({ request, env }) {
           d.headline                                 AS headline,
           d.outcome                                  AS outcome,
           d.resolution                               AS resolution,
+          d.resident_sentence                        AS residentSentence,
           d.works_start                              AS worksStart,
+          d.commitment                               AS commitment,
+          d.outcome_unclear                          AS outcomeUnclear,
           m.date                                     AS date,
           CASE WHEN m.minutes_published = 1
                THEN m.date ELSE NULL END             AS minutesDate,
@@ -121,33 +133,53 @@ export async function onRequestGet({ request, env }) {
     const byTopic = new Map(ids.map(id => [id, []]));
     for (const r of decisionRows) {
       byTopic.get(r.topicId)?.push({
-        id:         r.id,
-        meeting:    r.meeting,
-        item:       r.item,
-        date:       r.date,
-        minutesDate:r.minutesDate,
-        headline:   r.headline,
-        outcome:    r.outcome,
-        resolution: r.resolution,
-        worksStart: r.worksStart,
-        agendaUrl:  r.agendaUrl,
-        minutesUrl: r.minutesUrl,
+        id:              r.id,
+        meeting:         r.meeting,
+        item:            r.item,
+        date:            r.date,
+        minutesDate:     r.minutesDate,
+        headline:        r.headline,
+        outcome:         r.outcome,
+        resolution:      r.resolution,
+        residentSentence:r.residentSentence,
+        worksStart:      r.worksStart,
+        commitment:      r.commitment,
+        // D1 stores the flag as 0/1; expose a boolean.
+        outcomeUnclear:  r.outcomeUnclear === 1,
+        agendaUrl:       r.agendaUrl,
+        minutesUrl:      r.minutesUrl,
       });
     }
 
-    const topics = topicRows.map(t => ({
-      id:        t.id,
-      subject:   t.subject,
-      type:      t.type,
-      headline:  t.headline,
-      stage:     t.stage,
-      suburbs:   JSON.parse(t.suburbs_json || '[]'),
-      streets:   JSON.parse(t.streets_json || '[]'),
-      firstSeen: t.firstSeen,
-      lastSeen:  t.lastSeen,
-      detailPage:t.detailPage,
-      decisions: byTopic.get(t.id) || [],
-    }));
+    const topics = topicRows.map(t => {
+      const decisions = (byTopic.get(t.id) || []).map(d => ({
+        ...d,
+        // The honest resident label for this appearance (ADR 0008): "Outcome unclear" when
+        // the text contradicts the outcome word, else the six-word map of its lifecycle
+        // point. Derived by the SAME residentLabel the pass used, so card and data agree.
+        label: residentLabel(
+          { outcome: d.outcome, works_start: d.worksStart, commitment: d.commitment,
+            outcome_unclear: d.outcomeUnclear ? 1 : 0 },
+          t.type,
+        ),
+      }));
+
+      return {
+        id:        t.id,
+        subject:   t.subject,
+        type:      t.type,
+        headline:  t.headline,
+        stage:     t.stage,
+        // The topic's resident label mirrors its neutral `stage` in the six-word vocabulary.
+        label:     RESIDENT_LABEL[t.stage] ?? t.stage,
+        suburbs:   JSON.parse(t.suburbs_json || '[]'),
+        streets:   JSON.parse(t.streets_json || '[]'),
+        firstSeen: t.firstSeen,
+        lastSeen:  t.lastSeen,
+        detailPage:t.detailPage,
+        decisions,
+      };
+    });
 
     return json(topics, 200);
 
