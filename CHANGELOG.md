@@ -78,6 +78,16 @@ adjacent-item outcome bleed).
 **status-rail-ledger**; verdict + follow-ups (no content repetition; colour-blind accessibility) captured
 in `memory/design.md`. Frontend build itself is on hold.
 
+### Ingest direction locked — ADR 0009
+Talking through "the initial ingest should be done by me, weekly updates by the API" surfaced that a
+**full re-ingest is the wrong frame**. `ingest.js --force` couples reading source (good, needed) with
+re-slugging topic identity (bad — #45 destroys the 96 human aliases). Every fix this session decoupled
+them: source-read corrections applied by id, never re-slugging. **ADR 0009** makes that the model: keep
+the topic spine (ids + 96 aliases) forever; **correct decision data in place by id** (a one-time sweep
+generalising `backfill-outcomes.js`); **append new meetings id-stably** (a scheduled Claude-API delta that
+matches to existing topics). Retires `ingest.js --force`; resolves #45 by construction; the correct-in-place
+sweep is the vehicle to close #59/#60/#61.
+
 ### Issues opened
 - **#59** — minutes ingest skips items adopted "in globo" / in grouped resolutions (null-outcome root cause).
 - **#60** — extraction fidelity: lost-motion `resolution` restates the defeated motion; adjacent-item outcome bleed.
