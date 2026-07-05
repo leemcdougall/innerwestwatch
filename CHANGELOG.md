@@ -4,8 +4,13 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
-## 2026-07-04 (session 18) — Honest-label pass built and applied (ADR 0008)
+## 2026-07-04 (session 18) — Honest labels end-to-end: pass, API contract, null triage (ADR 0008)
 
+A long session that took the honest-label work from stored design to live, resident-facing data: built
+and applied the ADR 0008 pass, widened `/api/items` to carry it (plus relations + images), resolved the
+contradiction cases from source, and triaged the null outcomes. Sections below, newest work last.
+
+### The honest-label pass
 Built the pass ADR 0008 specified and ran it over live D1. For each of 651 decisions a model reads the
 stored `resolution` (+ `outcome`, `headline`) and returns `{commitment, resident_sentence,
 text_has_refusal}`; the coarse status stays derived by `deriveStage`, now fed the real commitment tag.
@@ -39,11 +44,49 @@ with a sentence covering both.
 over-count ADR 0008 targeted is corrected by reading the actual text. 651 resident sentences, 520
 commitment tags, 2 "Outcome unclear".
 
+### `/api/items` contract widened (now serves the honest data)
+Three additive passes over `functions/api/items.js`, each verified on a Cloudflare preview deploy before
+merging (the cross-dir import of `db/lib/labels.js` bundles fine in the Pages runtime):
+- Each **decision** now returns `residentSentence`, `commitment`, `outcomeUnclear`, and a derived `label`
+  ("Outcome unclear" or the six-word lifecycle label); each **topic** returns a `label` mapping its stage.
+  Vocabulary imported from `db/lib/labels.js` — one source of truth, no copy in the frontend.
+- Added **`relations[]`** (linked topics + direction: parent/child/related/supersedes/superseded-by) and
+  **`images[]`** (infocouncil diagram URLs) — the last documented contract gap. 146 relation-links, 680
+  images now served.
+- Fixed two **`schema.sql` drifts**: `decisions.resident_sentence`/`outcome_unclear` (migration 0008) and
+  `topic_relations` (migration 0004) were never mirrored into schema.sql.
+
+### The 2 "Outcome unclear" cases — resolved from source
+Read the actual infocouncil minutes for both, as Lee asked. Both were real data bugs the flag correctly
+caught, not false alarms: civic-offices (`council-16jun2026-38`) was **Motion Lost 13–2** (outcome "not
+supported" is right; the `resolution` field just restated the defeated motion) → now **Decided**;
+Norton/Lapish (`ltf-20apr2026-06`) was a **mis-extraction** — the source recommends "supported
+in-principle" but "not supported" bled in from the previous item → now **Being looked into**. Live data
+now has **0 "Outcome unclear"**. Two systemic ingest bugs noted for #45 (lost-motion resolution text;
+adjacent-item outcome bleed).
+
+### Null-outcome triage (74 → 53, 35 of those now honest)
+- **`db/backfill-outcomes.js`** (new tool) reads a meeting's published minutes and recovers outcomes the
+  per-item ingest skipped (mostly items adopted "in globo"). **Filled 21**; #45-safe (updates rows by id).
+- **`RAISED_LABEL` "Raised at public forum"** — 12 community-address items (residents speaking, no vote)
+  no longer read a false "Coming up". 23 agenda-only nulls correctly stay "Coming up".
+- Found a **data-integrity bug**: 18 items are tagged to meetings whose minutes don't contain them
+  (verified content absent). Not a missing outcome — a separate dig, likely #45-adjacent.
+
+### Prototype (design input, kept)
+`prototype-topic-card.html` (local, not shipped) — three card/trail layouts on live data. Lee picked the
+**status-rail-ledger**; verdict + follow-ups (no content repetition; colour-blind accessibility) captured
+in `memory/design.md`. Frontend build itself is on hold.
+
+### Issues opened
+- **#59** — minutes ingest skips items adopted "in globo" / in grouped resolutions (null-outcome root cause).
+- **#60** — extraction fidelity: lost-motion `resolution` restates the defeated motion; adjacent-item outcome bleed.
+- **#61** — 18 decisions tagged to meetings whose minutes don't contain them (data-integrity).
+
 ### Not done this session (next steps)
-- The API (`/api/items`) does not yet serve `resident_sentence` / `outcome_unclear`; the site still
-  shows only `stage`. Widening the contract is the next step before the frontend can show the sentences.
-- The 74 null outcomes still need their three-bucket triage (agenda-only / minutes-blank / confidential),
-  which needs source re-reads (#45-gated).
+- The **18 "not in their minutes"** decisions (#61 — data-integrity dig).
+- Colour-blind accessibility for the chosen card layout, before any frontend build.
+- The frontend rebuild (Milestone 7) remains on hold.
 
 ---
 
