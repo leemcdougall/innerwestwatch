@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert';
-import { residentLabel, normalizeLabelResult, outcomeUnclear, SENTENCE_MAX } from './labels.js';
+import { residentLabel, normalizeLabelResult, outcomeUnclear, RAISED_LABEL, SENTENCE_MAX } from './labels.js';
 
 let passed = 0;
 function check(name, fn) {
@@ -61,6 +61,23 @@ check('agenda-only null outcome → Coming up (headline word never upgrades it)'
   assert.strictEqual(
     residentLabel({ outcome: null, headline: 'Pedestrian crossing approved' }, 'crossing'),
     'Coming up',
+  );
+});
+
+// A public-forum community address (a resident speaking, no vote) must not read "Coming up"
+// off its null outcome — it was never on the decision track. It reads "Raised at public forum".
+check('public-forum address with no outcome → Raised at public forum', () => {
+  assert.strictEqual(
+    residentLabel({ publicForum: true, outcome: null }, 'community-address'),
+    RAISED_LABEL,
+  );
+});
+
+// But a public-forum item that DID carry an outcome (a motion arising) labels normally.
+check('public-forum item WITH an outcome labels normally', () => {
+  assert.strictEqual(
+    residentLabel({ publicForum: true, outcome: 'carried', commitment: 'action' }, 'motion'),
+    'Decided',
   );
 });
 

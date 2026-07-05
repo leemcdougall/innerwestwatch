@@ -24,6 +24,11 @@ export const RESIDENT_LABEL = {
 // determination (ADR 0008 decision 5).
 export const UNCLEAR_LABEL = 'Outcome unclear';
 
+// Shown for a public-forum community address — a resident speaking to Council, with no vote.
+// These have no `outcome`, so without this they would read "Coming up" as if a decision were
+// pending; it never was. Honest: the community raised it, Council heard it, nothing decided.
+export const RAISED_LABEL = 'Raised at public forum';
+
 // Whether a decision's stored OUTCOME WORD genuinely contradicts its resolution TEXT
 // (ADR 0008 decision 5). Derived, not model-judged: asking the model "do these disagree?"
 // proved noisy (it flagged clean deferrals and contract awards). The reliable signal is a
@@ -47,6 +52,8 @@ export function outcomeUnclear({ outcome, commitment, textHasRefusal } = {}) {
 // tag now feeds deriveStage for real, reviving ADR 0007) and mapped to the resident word.
 export function residentLabel(decision, type) {
   if (decision.outcome_unclear) return UNCLEAR_LABEL;
+  // A public-forum address with no recorded outcome was never a decision in progress.
+  if (decision.publicForum && !decision.outcome) return RAISED_LABEL;
   return RESIDENT_LABEL[deriveStage([decision], type)];
 }
 

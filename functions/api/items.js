@@ -204,7 +204,10 @@ export async function onRequestGet({ request, env }) {
         // point. Derived by the SAME residentLabel the pass used, so card and data agree.
         label: residentLabel(
           { outcome: d.outcome, works_start: d.worksStart, commitment: d.commitment,
-            outcome_unclear: d.outcomeUnclear ? 1 : 0 },
+            outcome_unclear: d.outcomeUnclear ? 1 : 0,
+            // A public-forum appearance with no outcome is a community address, not a
+            // pending decision → "Raised at public forum", not "Coming up".
+            publicForum: String(d.meeting).startsWith('public-forum') },
           t.type,
         ),
       }));
