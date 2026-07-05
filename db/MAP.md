@@ -15,6 +15,7 @@ honest. D1 is the source of truth, not `data/items.json`. The *why* behind this 
 | `apply-subject-aliases.js` | Upserts verified subject→topic aliases from `relation-subject-aliases.json` so links survive re-ingest. |
 | `recompute-stages.js` | Recomputes every topic's `stage` from existing decisions — no source re-read. Use this to apply a changed stage rule. |
 | `label-decisions.js` | The honest-label pass (ADR 0008): a model reads each decision's stored `resolution` → `commitment` + `resident_sentence`, and the text-vs-outcome contradiction flag is derived. Reads stored text only (not a re-ingest, #45-safe). Flags: `--dry-run` / `--sample` / `--limit N` / `--ids a,b,c`. Run `recompute-stages.js` after. |
+| `backfill-outcomes.js` | Fills MISSING outcomes for decisions whose meeting has published minutes but a null `outcome` (ADR 0008 null triage): fetches the minutes, a model locates each item's recorded outcome, UPDATEs the existing row by id. Never re-slugs (#45-safe). Flags: `--meeting <id>` / `--all` / `--dry-run`. Run `recompute-stages.js` after. |
 | `human-relations.json` | Source of truth for human-confirmed topic links, keyed by **subject pair** (slug-immune). |
 | `relation-subject-aliases.json` | Durable git record of human subject→topic judgements (mappings + `leave` entries). |
 | `migrate.js` / `seed.sql` | Legacy: generates `seed.sql` from `items.json`. `seed.sql` is generated — don't hand-edit. |
