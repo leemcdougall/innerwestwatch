@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert';
-import { residentLabel, normalizeLabelResult, outcomeUnclear, RAISED_LABEL, SENTENCE_MAX } from './labels.js';
+import { residentLabel, normalizeLabelResult, outcomeUnclear, RAISED_LABEL, ANSWERED_LABEL, SENTENCE_MAX } from './labels.js';
 
 let passed = 0;
 function check(name, fn) {
@@ -78,6 +78,16 @@ check('public-forum item WITH an outcome labels normally', () => {
   assert.strictEqual(
     residentLabel({ publicForum: true, outcome: 'carried', commitment: 'action' }, 'motion'),
     'Decided',
+  );
+});
+
+// A Question on Notice (ADR 0009 sweep stores outcome="answered") was answered in writing with
+// no vote — it reads "Answered", never "Coming up" off a null and never "Being looked into" off
+// the type fallback. The decision-level override fires before the stage machinery.
+check('question-on-notice (outcome "answered") → Answered', () => {
+  assert.strictEqual(
+    residentLabel({ outcome: 'answered' }, 'other'),
+    ANSWERED_LABEL,
   );
 });
 

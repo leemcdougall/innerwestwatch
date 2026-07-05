@@ -95,6 +95,12 @@ export function stageRank({ outcome, works_start, commitment } = {}, type) {
   // No determination recorded yet.
   if (!o) return 1;
 
+  // A Question on Notice answered in writing (ADR 0009 sweep stores "answered") is settled —
+  // nothing is pending — so at TOPIC level it reads `decided` rather than "under review". The
+  // resident-facing decision label is the distinct "Answered" (db/lib/labels.js); this only
+  // stops a lone question-on-notice topic from reading as if work were still underway.
+  if (o === 'answered') return 4;
+
   // A refusal is a settled determination → decided (the outcome carries the "no").
   if (isRefusal(o)) return 4;
 
