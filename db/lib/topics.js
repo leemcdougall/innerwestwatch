@@ -72,7 +72,8 @@ export const WORKS_TYPES = new Set((
 export function isRefusal(o) {
   o = (o || '').toLowerCase();
   return o.includes('refus') || o.includes('not supported') || o.includes('withdraw')
-    || o.includes('lapsed') || o.includes('reject') || o.includes('declined');
+    || o.includes('lapsed') || o.includes('reject') || o.includes('declined')
+    || o.includes('lost');   // "Motion Lost" — a defeated motion is a settled "no", not progress
 }
 
 // Rank a single decision's progress on the neutral lifecycle (ADR 0004 + 0007):

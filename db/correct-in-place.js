@@ -33,6 +33,10 @@
  *   node db/correct-in-place.js --meeting council-19aug2025 --dry-run           # preview all items
  *   node db/correct-in-place.js --meeting council-19aug2025 --dry-run --only-null  # preview the nulls
  *   node db/correct-in-place.js --meeting council-19aug2025                       # apply (writes D1)
+ *   node db/correct-in-place.js --all --dry-run                                  # preview EVERY meeting
+ *   node db/correct-in-place.js --all                                           # apply across all
+ * `--all` sweeps every meeting with published minutes EXCEPT public-forum meetings (their items are
+ * community addresses with no vote, already honest via the "Raised at public forum" label).
  * After applying a meeting, run `node db/recompute-stages.js` so corrected outcomes flow into
  * topic stages, then spot-check https://innerwestwatch.pages.dev/api/items.
  *
@@ -61,8 +65,14 @@ try {
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
 const onlyNull = argv.includes('--only-null');
+const all = argv.includes('--all');
 const meetingArg = argv.find(a => a.startsWith('--meeting'));
 const meetingId = meetingArg ? (meetingArg.split('=')[1] ?? argv[argv.indexOf(meetingArg) + 1]) : null;
+// --ids a,b,c restricts writes to these exact decision ids (still reads the whole meeting for
+// context). Used to apply only the changes verified against source, when a meeting mixes a safe
+// correction with a contested one.
+const idsArg = argv.find(a => a.startsWith('--ids'));
+const onlyIds = idsArg ? new Set((idsArg.split('=')[1] ?? argv[argv.indexOf(idsArg) + 1]).split(',')) : null;
 
 // ─── D1 REST API (same shape as db/backfill-outcomes.js) ────────────────────────
 async function d1Query(sql, params = []) {
@@ -217,21 +227,24 @@ function determinationClass(outcome) {
 async function processMeeting(client, mid) {
   const [meeting] = await d1Query(
     `SELECT id, agenda_url, minutes_url, minutes_published FROM meetings WHERE id = ?`, [mid]);
-  if (!meeting) { console.log(`  ! meeting ${mid} not found`); return; }
+  if (!meeting) { console.log(`  ! meeting ${mid} not found`); return { mid, changed: 0, applied: 0 }; }
   if (!meeting.minutes_published || !meeting.minutes_url) {
     console.log(`  ! ${mid} has no published minutes — skipping (agenda-only, honestly "Coming up")`);
-    return;
+    return { mid, changed: 0, applied: 0 };
   }
 
   // Every decision in the meeting (or just the nulls, with --only-null), plus the topic type
   // deriveStage needs as its commitment fallback.
-  const items = await d1Query(
+  let items = await d1Query(
     `SELECT d.id, d.item_number, d.headline, d.outcome, d.resolution, d.commitment,
             d.resident_sentence, d.outcome_unclear, t.type
        FROM decisions d JOIN topics t ON t.id = d.topic_id
       WHERE d.meeting_id = ? ${onlyNull ? 'AND d.outcome IS NULL' : ''}
       ORDER BY d.item_number`, [mid]);
-  if (items.length === 0) { console.log(`  ${mid}: nothing to check`); return; }
+  // --ids: only READ the target items (the model still gets full minutes for context), so a
+  // targeted apply is one fast call instead of re-reading a 60-item meeting in five batches.
+  if (onlyIds) items = items.filter(it => onlyIds.has(it.id));
+  if (items.length === 0) { console.log(`  ${mid}: nothing to check`); return { mid, changed: 0, applied: 0 }; }
 
   console.log(`\n${mid} — checking ${items.length} item(s); fetching source…`);
   const [minutesHtml, agendaHtml] = await Promise.all([
@@ -258,6 +271,7 @@ async function processMeeting(client, mid) {
   for (const r of results) {
     const src = byNum.get(r.item_number);
     if (!src) continue;
+    if (onlyIds && !onlyIds.has(src.id)) continue;   // --ids: ignore items outside the verified set
 
     // Build the proposed record from the read.
     const norm = normalizeLabelResult(r);
@@ -285,6 +299,13 @@ async function processMeeting(client, mid) {
     // This ignores label wobble from a re-rolled commitment tag and within-class word swaps
     // ("approved"↔"carried"), so a correct row is never churned — only genuinely wrong
     // determinations are rewritten.
+    // Guardrail: NEVER blank an outcome we already hold. If the model can't relocate a
+    // determination we previously recorded, that is a limit of this read, not evidence the
+    // stored outcome is wrong. This protects confidential items especially — their substance is
+    // closed, but the open resolution we stored ("noted"/"adopted") is legitimate and must not
+    // be erased into a misleading "Coming up". The sweep corrects and fills; it never deletes.
+    if (src.outcome && proposedOutcome === null) { same++; continue; }
+
     const beforeClass = determinationClass(src.outcome);
     const afterClass = determinationClass(proposedOutcome);
     const isChange = beforeClass !== afterClass;
@@ -315,6 +336,8 @@ async function processMeeting(client, mid) {
     }
     console.log(`  applied ${writes.length} update(s) to ${mid}.`);
   }
+
+  return { mid, changed, applied: dryRun ? 0 : writes.length };
 }
 
 async function readMinutes(client, minutesText, items) {
@@ -333,11 +356,37 @@ async function main() {
   const required = ['ANTHROPIC_API_KEY', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_DATABASE_ID', 'CLOUDFLARE_D1_TOKEN'];
   const missing = required.filter(k => !process.env[k]);
   if (missing.length) { console.error(`Missing env: ${missing.join(', ')}`); process.exit(1); }
-  if (!meetingId) { console.error('Pass --meeting <id> (one meeting at a time — read the diffs).'); process.exit(1); }
+  if (!meetingId && !all) { console.error('Pass --meeting <id>, or --all to sweep every meeting.'); process.exit(1); }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  console.log(`${dryRun ? 'DRY RUN — ' : ''}correct-in-place sweep for ${meetingId}${onlyNull ? ' (null outcomes only)' : ''}`);
-  await processMeeting(client, meetingId);
+
+  // The meetings to sweep. `--all` takes every meeting with published minutes EXCEPT public-forum
+  // ones (community addresses, no vote — already honest via "Raised at public forum"). Otherwise
+  // the single meeting named with --meeting.
+  let meetings;
+  if (all) {
+    meetings = (await d1Query(
+      `SELECT m.id FROM meetings m WHERE m.minutes_published = 1 AND m.id NOT LIKE 'public-forum%'
+         AND EXISTS (SELECT 1 FROM decisions d WHERE d.meeting_id = m.id) ORDER BY m.id`)).map(r => r.id);
+  } else {
+    meetings = [meetingId];
+  }
+
+  console.log(`${dryRun ? 'DRY RUN — ' : ''}correct-in-place sweep — ${meetings.length} meeting(s)${onlyNull ? ' (null outcomes only)' : ''}`);
+
+  const summary = [];
+  for (const mid of meetings) summary.push(await processMeeting(client, mid));
+
+  if (all) {
+    // Aggregate so a broad sweep is reviewable at a glance: which meetings move, how much.
+    const touched = summary.filter(s => s && s.changed > 0);
+    const totalChanged = summary.reduce((n, s) => n + (s?.changed ?? 0), 0);
+    const totalApplied = summary.reduce((n, s) => n + (s?.applied ?? 0), 0);
+    console.log(`\n${'═'.repeat(60)}\nSWEEP SUMMARY — ${meetings.length} meetings, ${totalChanged} item(s) ${dryRun ? 'would change' : `changed (${totalApplied} applied)`}:`);
+    for (const s of touched.sort((a, b) => b.changed - a.changed)) console.log(`  ${String(s.changed).padStart(3)}  ${s.mid}`);
+    if (touched.length === 0) console.log('  (no changes — everything already matches source)');
+  }
+
   if (!dryRun) console.log('\nNext: run `node db/recompute-stages.js`, then spot-check /api/items.');
 }
 

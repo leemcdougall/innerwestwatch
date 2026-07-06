@@ -55,9 +55,32 @@ misrepresent it.
 - Ran `db/recompute-stages.js` after each apply. Null outcomes **53 → 36**, and every remaining null is
   now honest: 23 agenda-only ("Coming up"), 12 public-forum ("Raised at public forum"), 1 confidential.
 
+### The broad sweep across all meetings (stop playing whack-a-mole)
+Ran the sweep over every meeting with published minutes (`--all`, 26 meetings, ~616 decisions). Rather
+than a pile of fixes, it surfaced **two systematic bugs** — a broad win once fixed:
+- **"Motion Lost" wasn't a refusal.** `isRefusal` in `db/lib/topics.js` didn't include "lost", so a
+  defeated motion read as if it were progressing ("Being looked into"). Fixed → a lost motion reads
+  "Decided". (~11 items were being mis-flagged because of this.)
+- **Confidential items were being blanked to "Coming up".** The "refuse to fabricate" rule was erasing
+  outcomes these items legitimately hold (the open minutes recorded "noted"/"adopted"). Added a guardrail:
+  the sweep NEVER blanks an outcome it already holds. (~7 items.)
+
+After the two fixes the real change set was just **14 items across 24 meetings** — the data is mostly
+sound. Verified against source and applied the safe ones (`--ids` was added for exactly-this targeting):
+- **6 Questions on Notice → "Answered"** (headline-confirmed): `16jun2026-57`, `18nov2025-37`,
+  `19may2026-40`, `23sep2025-51`, `23sep2025-52`, `28oct2025-43`.
+- **1 deferral** confirmed from minutes: `council-16jun2026-18` (Wicks Park master plan — stored
+  "adopted" but the minutes say "That Item 18 be deferred"; the stored value was the mis-read).
+
+The remaining **7 are genuinely contested** (the model and stored value disagree and the source is
+subtle: a motion Lost-then-alternative-Carried; two mixed/contested LTF parking items; deferrals and a
+classification to confirm). Rather than guess, filed **#68** for individual source review — a wrong
+approved↔rejected flip is the worst error. `db/correct-in-place.js` now has `--all` and `--ids`.
+
 ### Issues
 - **#61 resolved** — diagnosed (no threading bug) and corrected; the one leftover is a lawful
   confidential item, not a data error.
+- **#68 opened** — 7 contested items from the broad sweep needing individual source review.
 - **#60** — its two known cases were hand-fixed in session 18; the sweep adds broader coverage but does
   not yet re-check a lost-motion's *resolution text* when the outcome word already reads "lost"
   (class-gate skips refused→refused). Left open with a note.
@@ -138,8 +161,8 @@ adjacent-item outcome bleed).
 - Found a **data-integrity bug**: 18 items are tagged to meetings whose minutes don't contain them
   (verified content absent). Not a missing outcome — a separate dig, likely #45-adjacent.
 
-### Prototype (design input, kept)
-`prototype-topic-card.html` (local, not shipped) — three card/trail layouts on live data. Lee picked the
+### Prototype (design input)
+A throwaway card/trail prototype (three layouts on live data, since deleted) — Lee picked the
 **status-rail-ledger**; verdict + follow-ups (no content repetition; colour-blind accessibility) captured
 in `memory/design.md`. Frontend build itself is on hold.
 
