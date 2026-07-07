@@ -28,6 +28,10 @@ schema, or site changes this session (D1 unchanged: 594 topics / 651 decisions /
 
 ### Decisions
 - Ticket system stays on GitHub — no new tool. It already is a tracker; the fix was translation, not tooling.
+- **Claude is the sole GitHub operator; Lee never touches GitHub.** So no reliance on UI-only Workflow
+  automations — the kanban is maintained entirely by CLI, in-session: new issue → board (Todo), start →
+  In Progress, close → Done, reconciled against `gh issue list` at session start. Locked in
+  `CLAUDE.md` + `memory/conventions.md`.
 
 ---
 
