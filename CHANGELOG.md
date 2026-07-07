@@ -47,6 +47,15 @@ source.
   per item, following the "Lee reads the evidence himself" convention.
 - No code or schema changes; no site deploy needed (the Worker reads corrected rows from D1 directly).
 
+### Follow-up — naming rule hardened (later 2026-07-07)
+Lee flagged for the 4th time that every number must appear with its human-readable name, not bare.
+Tightened the session-20 "translate-everything" rule into a HARD RULE in `memory/conventions.md`:
+always `#<number> — "<name>"` for issues/PRs and `ADR NNNN — "<name>"` for decisions (GitHub now shows
+the name next to each number; use it — look it up if unknown, never send bare). **Extended to every
+prefix, present and future** — any coded identifier I ever introduce (milestone tags, branch codes,
+table names, migration IDs, label codes) ships with a plain-English name the first time it appears and
+every time after. No new bare-code vocabulary. Convention-only; no data/code/site change.
+
 ---
 
 ## 2026-07-07 (session 20) — Plain-English ticket system: rewrote all 6 issues, locked the translate-everything rule, built a kanban board
