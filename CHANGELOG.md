@@ -4,6 +4,51 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-07 (session 21) — Human check on the 7 contested decisions (resolve #68)
+
+Answered Lee's question about GitHub issue numbering (nothing to backfill — GitHub owns one shared,
+immutable issue+PR counter per repo; the kanban board is a status view, not a number hierarchy), then
+worked the human-check sweep from issue #68: the 7 decisions the correct-in-place sweep flagged as too
+subtle to auto-flip. Read each one against its **original infocouncil minutes/agenda** (curl with a
+browser UA — WebFetch 403s), corrected the live D1 rows **by id** (ADR 0009 pattern; no re-slug, no
+re-ingest), and built a plain-English evidence page so Lee can audit every change against the quoted
+source.
+
+### What the source reads found (6 corrections + 1 confirmed-correct)
+- **3 had their meaning flipped** — the worst error we can publish:
+  - `ltf-15sep2025-09` (No Parking sign, laneway rear of Church St, Marrickville): stored **approved**,
+    but the committee recommended **no change** — residents objected and the sign is *not* moving.
+    → `not supported`.
+  - `ltf-16feb2026-16` (Mackey Park RPS / Cary St): stored **not supported**, but it's a mixed decision
+    whose headline result is **angled parking approved on Cary Street** (only Thornley St refused;
+    Carrington Rd + Richardson's Cres held over for consultation). → `approved`. Also confirmed the
+    item-number worry: minutes "Item 16 = Mackey Park RPS" *is* the Cary St item; numbering is right.
+  - `council-17mar2026-31` ("Defence of Democratic Rights" NoM): the strong motion that *condemned*
+    police (and asked the Mayor to write the Premier) was **Lost**; a milder motion **Carried**. Our
+    headline claimed Council "condemns police tactics" — the defeated wording. Outcome stays `carried`;
+    headline + sentence rewritten to tell both halves.
+- **3 had another item's sentence bled in** (adjacent-item contamination, the #60 fault class):
+  - `council-09dec2025-58` (67-75 Lords Rd open space): stored **approved** with a *Bignell Lane/Landcom*
+    sentence; actually **deferred** to Feb 2026 in closed session. → `deferred` + correct sentence.
+  - `council-09dec2025-57` (early childhood worker retention payment): stored **deferred** with the
+    *Lords Rd* sentence; actually a **Question on Notice** answered in writing. → `answered` + the real
+    answer (payment not yet received; grant approved Nov 2025; staff expected paid early Jan 2026).
+  - `council-23sep2025-53` (Together2 social enterprise café funding): stored **approved** with *Item
+    55's* APIA/Lambert Park lease sentence; actually **deferred** for a councillor briefing. → `deferred`.
+- **1 confirmed correct, left unchanged:** `council-21apr2026-32` (Local Tradies parking permits) —
+  the minutes say the motion "lapsed for want of a seconder", so `lapsed` (not "held over") is right.
+
+### Mechanics
+- Corrections applied as 6 `UPDATE decisions … WHERE id = …` (direct SQL, by id — same discipline as the
+  session-18/19 hand fixes; D1 30-day Time Travel is the safety net). Resident sentences kept ≤240 chars.
+- `node db/recompute-stages.js` after: 3 topic stage changes (Lords Rd + Together2 → deferred; childhood
+  QoN → decided via "answered"). Data shape otherwise unchanged (594 topics / 651 decisions).
+- Evidence page for Lee: `memory/issue68-source-check.html` (gitignored) — before/after + quoted minutes
+  per item, following the "Lee reads the evidence himself" convention.
+- No code or schema changes; no site deploy needed (the Worker reads corrected rows from D1 directly).
+
+---
+
 ## 2026-07-05 (session 19) — Correct-in-place sweep: the #61 diagnosis + honest deferred/answered labels (ADR 0009)
 
 Built the correct-in-place sweep (ADR 0009, item 1) and ran it on the two meetings behind issue #61.
