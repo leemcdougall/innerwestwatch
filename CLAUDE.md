@@ -133,6 +133,22 @@ Known 2026 LTF meetings:
 
 ---
 
+## Tickets and engineer-speak — always translate (standing rule, locked 2026-07-07)
+
+Lee tracks the project through GitHub Issues (his customer-service-ticket system) plus a kanban board.
+When many changes land at once it's hard for him to keep up, so **every piece of engineer-speak carries
+a plain-English "human part" alongside it — every session, forever.** The numbers stay; the meaning
+gets translated. Full spec in `memory/conventions.md` ("Plain-English human layer on ALL
+engineer-speak"). In short:
+
+- **Issue bodies**: top `## In plain English` block (What this is / Why it matters / What happens next),
+  then `---`, then `## Engineer detail` with the full technical content preserved.
+- **Issue titles / ADR names**: plain human part first, engineer tag in parentheses.
+- **In prose**: never a bare `#68` or `ADR 0009` — gloss it inline (already the "never a bare number" rule).
+- **If the human wording is ever ambiguous, STOP and ask Lee to name it there and then.** Don't guess.
+
+---
+
 ## Session logging — do this at the end of every session
 
 Before closing out, update the following. Do not skip these even if the session was short.
