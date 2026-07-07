@@ -4,6 +4,33 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-07 (session 20) — Plain-English ticket system: rewrote all 6 issues, locked the translate-everything rule, built a kanban board
+
+Lee: "all these number issues make no sense to me… I need some sort of system that explains them all
+in plain English, customer-service-ticket style. Maybe GitHub can do this already." It can — GitHub
+Issues **is** that ticket system; the problem was the tickets were written in engineer-speak. No data,
+schema, or site changes this session (D1 unchanged: 594 topics / 651 decisions / 73 relations / 680 images).
+
+### What changed
+- **Rewrote all 6 open issues** (#68, #60, #48, #42, #11, #10) into a two-layer shape: a top
+  `## In plain English` block (What this is / Why it matters / What happens next) over `---` and
+  `## Engineer detail` with the full technical content preserved. Titles now lead with the human part,
+  engineer tag in parentheses.
+- **Locked a standing rule for every future session:** all engineer-speak (ADR numbers, issue/PR refs,
+  jargon) carries a plain-English human part alongside it; the numbers stay; **if the human wording is
+  ambiguous, stop and ask Lee to name it there and then.** Written into `CLAUDE.md` (read at every
+  session start) — PR #73, merged to `main`; full spec in `memory/conventions.md`. Extends the existing
+  "never a bare number" rule from *referencing* issues to *writing* them, and to PRs + my own prose
+  (caught myself writing a bare "PR #73" one sentence after stating the rule).
+- **Built a GitHub Projects kanban board** — project #1 (https://github.com/users/leemcdougall/projects/1):
+  all 6 issues added, all set to Todo. Required granting the gh `project` scope (`gh auth refresh -s project`,
+  run by Lee). Switch the view layout to Board (grouped by Status) to get the Todo/In Progress/Done columns.
+
+### Decisions
+- Ticket system stays on GitHub — no new tool. It already is a tracker; the fix was translation, not tooling.
+
+---
+
 ## 2026-07-05 (session 19) — Correct-in-place sweep: the #61 diagnosis + honest deferred/answered labels (ADR 0009)
 
 Built the correct-in-place sweep (ADR 0009, item 1) and ran it on the two meetings behind issue #61.
