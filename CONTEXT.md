@@ -90,7 +90,11 @@ Committee-neutral status, modelled on two axes (ADR 0004). The old LTF-specific 
 
 `completed` is defined but not yet derived: no source signal reliably marks a works as finished (a `works_start` date is a start, not an end), so the pipeline tops out at `in-progress`.
 
-**Outcome** lives on the Decision — the raw determination in the council's own terms: `approved`, `approved with amendments`, `refused`, `not supported`, `deferred`, `adopted`, `noted`, `contract executed`, etc. Null until a determination is recorded. A refusal (`refused`, `not supported`, `withdrawn`) reads as stage `decided` with the outcome shown alongside — a determination *was* made; the outcome says it was "no" (ADR 0004).
+**Two decision-level labels sit outside the six stages** (they describe an item that was never on the decision track, not a lifecycle position), each an override in `db/lib/labels.js`:
+- **Raised at public forum** (session 18) — a community address at a Public Forum: a resident spoke, Council heard it, no vote. Keyed off the meeting being a public forum with no outcome.
+- **Answered** (session 19) — a **Question on Notice**: a councillor's question answered in writing outside the meeting, with no vote. Stored as outcome `answered`. Without this it would read "Coming up" as if a decision were pending; there is no decision, only a written answer.
+
+**Outcome** lives on the Decision — the raw determination in the council's own terms: `approved`, `approved with amendments`, `refused`, `not supported`, `lost`, `deferred`, `held over`, `withdrawn`, `adopted`, `noted`, `answered`, `contract executed`, etc. Null until a determination is recorded. A refusal (`refused`, `not supported`, `withdrawn`, `lost`, `lapsed`) reads as stage `decided` with the outcome shown alongside — a determination *was* made; the outcome says it was "no" (ADR 0004). (`lost` was added to the refusal set in session 19; a defeated motion is a settled "no", not something still in progress.)
 
 **Honesty rules for the resident sentence (session 17):**
 - The read always gets the outcome word alongside the `resolution` text, and describes what the council *decided*, not what was proposed. For a "no", the rejection leads: "The council rejected a proposal to..." — never the proposal phrased as if it happened. (The old AI `headline` states the motion *as proposed*, so it reads as if a rejected item is going ahead; the resident sentence supersedes it on the card.)
@@ -98,8 +102,8 @@ Committee-neutral status, modelled on two axes (ADR 0004). The old LTF-specific 
 
 **Null outcomes are never upgraded to "Decided" from the headline (session 17).** A done-word in a stored `headline` ("...approved", "...cut") is usually the *officer's recommendation* leaking from the agenda, not a recorded vote — verified against the LTF 15 Jun 2026 agenda, whose "be approved" recommendations produced "approved" headlines with no minutes ingested. The 74 null-outcome decisions split three ways by what the record actually holds:
 - **Agenda only, no minutes in our data** → resident label **Coming up** (it is a proposal awaiting a vote). Fix = ingest the minutes, which for older meetings now exist on infocouncil (source re-read, #45-gated).
-- **Minutes published but this item's outcome not captured** → **Outcome unclear — see the original**, queued for source re-read.
-- **Confidential session / no determination recorded** → an honest note ("Discussed in confidential session" / "No decision recorded").
+- **Minutes published but this item's outcome not captured** → now recovered **in place** by the correct-in-place sweep (`db/correct-in-place.js`, session 19 / ADR 0009), which re-reads the source and corrects the Decision by id. It resolved the whole #61 bucket: mostly items **deferred** by a recorded batch motion (→ Held over), **Questions on Notice** (→ Answered), and a **withdrawn** motion — never a threading bug.
+- **Confidential session / no determination recorded** → left honest; the sweep refuses to fabricate an outcome for a closed-session item (only the procedural motion to go in-camera is public).
 Because the LTF only *recommends*, the true "Decided" for its works items lands at the later Ordinary Council ratification (the LTF → Council thread, ADR 0003).
 
 **Commitment** is the action-versus-process nature of an approved Decision: `action` (commits to a concrete change — build, install, adopt a plan, execute a contract) or `process` (commits only to investigate / review / receive / note). It is what would separate `decided` from `under-review` per decision. The intent is for the AI to tag it while reading the minutes, with `action` winning when a resolution does both.
