@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Inner West Watch — What's happening near you</title>
-<meta name="description" content="Plain-language summaries of Inner West Council decisions that affect your street — crossings, traffic calming, parking, and speed limits.">
+<meta name="description" content="Plain-language summaries of Inner West Council decisions — road works, parking, parks, planning, floods, budgets — and what they mean for your street.">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -193,6 +193,14 @@
     letter-spacing: -.01em;
   }
 
+  /* The resident sentence — the honest plain-English read of the latest decision
+     (ADR 0008). This, not the AI headline, is what explains the item on the card. */
+  .card-sentence {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--ink2);
+  }
+
   .card-footer {
     display: flex;
     align-items: center;
@@ -215,13 +223,15 @@
     letter-spacing: .04em;
     white-space: nowrap;
   }
-  .status-on-agenda    { background: var(--ylw-bg); color: var(--ylw); }
-  .status-held         { background: #f1f5f9; color: #475569; }
-  .status-forum-yes    { background: var(--grn-bg); color: var(--grn); }
-  .status-forum-amended{ background: var(--accent-bg); color: var(--accent); }
-  .status-forum-no     { background: var(--red-bg); color: var(--red); }
-  .status-confirmed    { background: var(--grn-bg); color: var(--grn); }
-  .status-works-coming { background: var(--warn-bg); color: var(--warn); }
+  /* Badge colours keyed to the topic's neutral `stage` (ADR 0004); the visible text is
+     always the API's plain-English `label`, so colour is never the only signal. */
+  .status-proposed     { background: var(--ylw-bg); color: var(--ylw); }     /* Coming up */
+  .status-deferred     { background: #f1f5f9; color: #475569; }              /* Held over */
+  .status-under-review { background: var(--accent-bg); color: var(--accent); } /* Being looked into */
+  .status-decided      { background: var(--grn-bg); color: var(--grn); }     /* Decided */
+  .status-in-progress  { background: var(--warn-bg); color: var(--warn); }   /* Underway */
+  .status-completed    { background: var(--grn-bg); color: var(--grn); }     /* Finished */
+  .status-other        { background: #f1f5f9; color: #475569; }              /* anything else */
 
   .card-link {
     font-size: 11px;
@@ -257,7 +267,7 @@
 <header class="header">
   <div class="header-eyebrow">Inner West Council</div>
   <h1>What's happening near you</h1>
-  <p class="header-sub">Plain-language summaries of council decisions affecting Inner West streets.</p>
+  <p class="header-sub">Plain-language summaries of Inner West Council decisions — every committee, every kind of issue.</p>
 </header>
 
 <div class="filter-bar" id="filterBar">
@@ -287,18 +297,13 @@
     infrastructure:   'Infrastructure',
   };
 
-  function statusLabel(item) {
-    const today = new Date().toISOString().slice(0, 10);
-    if (item.status === 'works-coming')      return { text: 'Works coming',       cls: 'status-works-coming' };
-    if (item.status === 'council-confirmed') return { text: 'Council confirmed',  cls: 'status-confirmed' };
-    if (item.status === 'forum-yes')         return { text: 'Forum approved',     cls: 'status-forum-yes' };
-    if (item.status === 'forum-amended')     return { text: 'Approved with changes', cls: 'status-forum-amended' };
-    if (item.status === 'forum-no')          return { text: 'Not approved',       cls: 'status-forum-no' };
-    if (item.status === 'on-agenda') {
-      if (item.meetingDate < today) return { text: 'Outcome coming', cls: 'status-held' };
-      return { text: 'On the agenda', cls: 'status-on-agenda' };
-    }
-    return { text: item.status, cls: 'status-on-agenda' };
+  // The badge shows the API's plain-English `label` ("Decided", "Being looked into", …),
+  // coloured by the topic's neutral `stage` (ADR 0004/0008). The old LTF-specific status
+  // vocabulary (forum-yes, works-coming, …) was retired with the threaded model.
+  const STAGE_CLASSES = ['proposed', 'deferred', 'under-review', 'decided', 'in-progress', 'completed'];
+  function statusBadge(topic) {
+    const cls = STAGE_CLASSES.includes(topic.stage) ? `status-${topic.stage}` : 'status-other';
+    return { text: topic.label || topic.stage || 'Unknown', cls };
   }
 
   function fmtDate(iso) {
@@ -308,27 +313,43 @@
     return `${parseInt(d)} ${months[parseInt(m)-1]} ${y}`;
   }
 
+  // Basic HTML-escape for API text interpolated into card markup.
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  }
+
   function renderCard(item) {
-    const status     = statusLabel(item);
+    const status     = statusBadge(item);
     const typeLabel  = TYPE_LABELS[item.type] || item.type;
-    const typeClass  = 'tag-' + item.type.replace(/[^a-z0-9]/g, '-');
+    const typeClass  = 'tag-' + String(item.type || 'report').replace(/[^a-z0-9]/g, '-');
 
     const suburbTags = (item.suburbs || []).map(s =>
-      `<span class="tag tag-suburb">${s}</span>`
+      `<span class="tag tag-suburb">${esc(s)}</span>`
     ).join('');
 
-    const linkHref   = item.detailPage || item.agendaUrl;
+    // The card explains the topic's CURRENT state: the latest decision's resident
+    // sentence (decisions[] arrives oldest-first from the API). The full trail belongs
+    // on the future topic page, not the card (CONTEXT.md, "Where the sentence shows").
+    const latest   = (item.decisions || [])[item.decisions.length - 1] || {};
+    const sentence = latest.residentSentence || '';
+
+    // Link to our own detail page when one exists, otherwise straight to the source
+    // document on infocouncil — minutes if published, else the agenda. The site is a
+    // digest, not a replacement: every card must reach the original document.
+    const linkHref   = item.detailPage || latest.minutesUrl || latest.agendaUrl || '#';
     const linkTarget = item.detailPage ? '' : ' target="_blank" rel="noopener"';
 
-    return `<a class="item-card" href="${linkHref}"${linkTarget} data-suburbs="${(item.suburbs || []).join(',')}">
+    return `<a class="item-card" href="${esc(linkHref)}"${linkTarget} data-suburbs="${esc((item.suburbs || []).join(','))}">
   <div class="card-tags">
-    <span class="tag ${typeClass}">${typeLabel}</span>
+    <span class="tag ${typeClass}">${esc(typeLabel)}</span>
     ${suburbTags}
   </div>
-  <div class="card-headline">${item.headline}</div>
+  <div class="card-headline">${esc(item.subject)}</div>
+  ${sentence ? `<div class="card-sentence">${esc(sentence)}</div>` : ''}
   <div class="card-footer">
-    <span class="card-meeting">${fmtDate(item.meetingDate)}</span>
-    <span class="status-badge ${status.cls}">${status.text}</span>
+    <span class="card-meeting">${fmtDate(item.lastSeen)}</span>
+    <span class="status-badge ${status.cls}">${esc(status.text)}</span>
   </div>
 </a>`;
   }

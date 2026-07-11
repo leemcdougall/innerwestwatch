@@ -28,13 +28,30 @@ in `memory/status.md` (never trust a hardcoded count — the database is the sou
 | `db/` | D1 schema, ingest, reconciliation, migrations. Source of truth for all item data. | Yes |
 | `functions/` | Cloudflare Pages Functions — the `/api/items` Worker. | Yes |
 | `docs/adr/` | Architecture decision records. | Yes |
-| `app/` | Shared frontend toolkit (CSS/JS) — **parked**, lands with the Milestone 7 frontend (WIP on `claude/m7-frontend-slice`). | Yes |
 | `meetings/` | Hand-built level-3 detail pages (Tempe South is the reference — do not touch). | Yes |
 | `data/` | `items.json` — historical record only; D1 is the real source of truth. | Yes |
 | `backups/`, `review/` | D1 backups + match.js review output — large, regenerable. | No (gitignored) |
 
-Top-level files: `index.html` (home feed), `topic.html` (issue detail, WIP), `wrangler.toml`
-(Pages + D1 config). Full detail in `GOALS.md`.
+Top-level files: `index.html` (home feed) and `wrangler.toml` (Pages + D1 config). `topic.html` and
+the `app/` frontend toolkit exist only on the parked Milestone 7 branch (`claude/m7-frontend-slice`),
+not on `main`. Full detail in `GOALS.md`.
+
+## Where each kind of fact lives (single source of truth, top down)
+
+If two places disagree, the one in this table wins — fix the other.
+
+| Kind of fact | Its one home |
+|---|---|
+| Item/decision data (what the council did) | The D1 database `counciltracker` — never a doc, never `data/items.json` |
+| Outstanding work (what to do next) | GitHub Issues + the kanban board (project #1) — never a list in a doc |
+| Current project state | `memory/status.md` (with a live query to verify data counts) |
+| What we're building + milestones | `GOALS.md` |
+| What words mean (domain terms) | `CONTEXT.md` |
+| Why decisions were made | `docs/adr/` (one file per decision) |
+| What happened, session by session | `CHANGELOG.md` |
+| Working rules and conventions | `CLAUDE.md` (repo rules) + `memory/conventions.md` (project habits) |
+| Design intent for the site | `memory/design.md` |
+| Where the project is headed | `memory/direction.md` |
 
 ## The two rules that keep this honest
 
