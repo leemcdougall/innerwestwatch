@@ -51,6 +51,37 @@ Many Decisions point to ONE Topic. The Topic carries current state; the Decision
 
 ---
 
+## Project
+
+A named real-world standing thing (a place, program, event or works) that groups many Topics, so a
+resident can follow it as one thing. Named by Lee, 2026-07-11 (ADR 0010 — "Projects above topics").
+
+The council gives each appearance of a big thing a different name: the Leichhardt Park Aquatic Centre
+is ~8 differently-named Topics (Stage 2 tender, children's pool staffing, swimming continuity, …), so
+subject-threading can never join them. A Project sits ABOVE Topics and collects them. It is an
+annotation, never a merge: every member Topic keeps its own page, stage and evidence trail
+(thread-never-merge, ADR 0003, still governs).
+
+A Project carries:
+- a stable **human-chosen id** (a slug a person wrote — never derived from AI-extracted text);
+- a **name** and a one-line plain-English **description**;
+- a **membership list**, many-to-many (one Topic may belong to several Projects or none), keyed by
+  subject so re-imports can't destroy it (the ADR 0006 pattern — source in `db/projects.json`,
+  D1 tables derived).
+
+**Membership is machine-proposed, human-confirmed — nothing publishes without a yes** (a wrong group
+is a published falsehood: "Marrickville Metro" the shopping centre is not Sydney Metro the rail line).
+Each yes is permanent, so oversight trends to zero.
+
+**A Project has no stage of its own.** Its follow view leads with the newest member decision's
+resident sentence ("where it's up to"), then one dated timeline of every Decision across all member
+Topics, newest first, each with its own sentence and honest label. A rolled-up status word would lie
+whenever members sit at different points.
+
+Examples: "Leichhardt Park Aquatic Centre", "The GreenWay", "Parramatta Road corridor rezoning".
+
+---
+
 ## Subject
 
 The canonical name of the issue — the stable thing that stays the same if the item returns to a later meeting (possibly at a different committee). AI-extracted at ingest, human-confirmable.
@@ -135,7 +166,7 @@ it, and `db/recompute-stages.js` recomputes stages from stored decisions only.
 
 A way residents navigate into the site.
 
-Current entry points: by suburb, by street. Planned: by Topic (follow an ongoing issue). Entry points are open-ended — new ones will be added as the site grows. The data model must support flexible lookup by any combination of suburb, street, committee, or topic.
+Current entry points: by suburb, by street. Planned: by Topic (follow an ongoing issue) and by Project (follow one big real-world thing, ADR 0010). Entry points are open-ended — new ones will be added as the site grows. The data model must support flexible lookup by any combination of suburb, street, committee, or topic.
 
 **Street search crosses suburb boundaries by design.** A resident searching a street near a suburb border should see everything physically close to them, regardless of which suburb a given item filed it under (project vision). A topic matches a street/suburb filter if ANY of its threaded decisions touched that place.
 
