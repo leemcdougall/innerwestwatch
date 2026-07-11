@@ -4,6 +4,54 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-11 (session 24) — The site updates itself: the weekly importer is live (#83 closed)
+
+Built the id-stable weekly importer designed by ADR 0009 — "correct in place and id-stable appender" —
+closing #83 ("new council minutes aren't reaching the site"). The Monday job now brings in new
+meetings AND newly published minutes for meetings we already hold, writes the plain-English sentences,
+and recomputes topic stages, with no human step. Proven live the same session.
+
+### Built
+- **`db/append-weekly.js`** — the new scheduled importer. Two branches per run: a brand-new meeting is
+  appended (topics attached by exact subject alias, new subjects mint new ids, nothing existing is
+  renamed); a known meeting whose minutes just appeared gets its outcomes filled IN PLACE by decision
+  id (chains `db/correct-in-place.js`). Then `db/label-decisions.js --ids` over any row still missing a
+  resident sentence, and `db/recompute-stages.js`. Idempotent (second run: "nothing new this week");
+  exits non-zero on any per-meeting failure so a broken week shows RED in Actions — the old job's
+  quiet green while importing nothing was the #83 pathology.
+- **`db/lib/infocouncil.js`** (portal discovery, item splitter, extraction prompts/calls),
+  **`db/lib/append-meeting.js`** (the id-stable attach-or-create write, `processMeeting`),
+  **`db/lib/d1.js`** (the shared D1 REST call) — extracted verbatim from `ingest.js` so appender and
+  legacy tool share one copy. `db/ingest.js` slimmed to a legacy manual bulk tool; retired from the
+  schedule; `--force` remains banned.
+- **`.github/workflows/weekly-append.yml`** replaces `ingest.yml` (same Monday 9am Sydney cron; adds a
+  `dry_run` input).
+
+### Proven (the acceptance test, run against live D1)
+- The 15 Jun 2026 LTF minutes — published for weeks, never imported — flowed in: **15 of 18 decisions
+  filled in place** (10 decided, 1 noted/being-looked-into, 4 held over — the meeting genuinely never
+  reached items 13–15; 3 rows honestly stay "Coming up" with no recorded determination).
+- **Topic ids unchanged on all 18 rows; all 96 human aliases intact; 0 rows missing a resident
+  sentence; 13 topic stages recomputed** (live shape after: 594 topics / 651 decisions; stages
+  decided 374 · under-review 161 · in-progress 25 · deferred 23 · proposed 11).
+- The minutes RENUMBER items (agenda item 18 = minutes "Item 5"); the model matches by title, so the
+  outcome landed on the right row — verified by hand against the source.
+- The live site card flipped: the Unwins Bridge Rd crossing topic now reads "Decided".
+- Evidence page for Lee: `memory/issue83-weekly-appender.html` (before/after cards, quoted source,
+  the safety checklist).
+
+### Decisions
+- The appender **never prunes orphan topics** (appending can't orphan anything; pruning is what made
+  `--force` destructive) and **never re-reads a known meeting wholesale** — fills are by decision id only.
+- Reused the existing CLIs as child processes rather than importing their internals — each tool stays
+  independently runnable and debuggable.
+
+### Issues
+- Closed **#83** (task: new council minutes aren't reaching the site — build the new weekly importer);
+  board card → Done. Milestone 11 marked ✅ in `GOALS.md`; Module 2 (Scanner) un-REGRESSED.
+
+---
+
 ## 2026-07-11 (session 23) — Full project audit: home page repaired, backlog on the board, one source of truth per fact
 
 Lee asked whether the project is in the right place against its goals at every level, and said the

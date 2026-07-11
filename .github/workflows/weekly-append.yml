@@ -1,4 +1,11 @@
-name: Ingest council meetings
+# The weekly appender (ADR 0009, issue #83) — brings in new meetings AND newly published
+# minutes for meetings we already hold, then writes the plain-English sentences and
+# recomputes topic stages. Replaces the old "Ingest council meetings" workflow, whose
+# scan skipped known meetings entirely and so never picked up minutes published after
+# first ingest (the #83 failure: green runs, nothing imported).
+#
+# The appender exits non-zero if any meeting fails, so a broken week shows RED here.
+name: Weekly append — new council decisions
 
 on:
   schedule:
@@ -16,9 +23,13 @@ on:
         description: 'Restrict to one committee slug (e.g. ltf, council) — leave blank for all'
         required: false
         default: ''
+      dry_run:
+        description: 'Set to "true" to report what would be done without writing'
+        required: false
+        default: ''
 
 jobs:
-  ingest:
+  append:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run ingest
+      - name: Run the weekly appender
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -41,8 +52,12 @@ jobs:
         run: |
           MONTHS="${{ github.event.inputs.months || '6' }}"
           COMMITTEE="${{ github.event.inputs.committee }}"
+          DRY="${{ github.event.inputs.dry_run }}"
           ARGS="--months $MONTHS"
           if [ -n "$COMMITTEE" ]; then
             ARGS="$ARGS --committee $COMMITTEE"
           fi
-          node db/ingest.js $ARGS
+          if [ "$DRY" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          node db/append-weekly.js $ARGS

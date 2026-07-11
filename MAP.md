@@ -25,7 +25,7 @@ in `memory/status.md` (never trust a hardcoded count — the database is the sou
 | Directory | What's in it | Committed? |
 |---|---|---|
 | `memory/` | Project memory — status, direction, design, conventions, research workspace, reference data. | **No** (gitignored, local working context) |
-| `db/` | D1 schema, ingest, reconciliation, migrations. Source of truth for all item data. | Yes |
+| `db/` | D1 schema, the weekly appender + correction tools, reconciliation, migrations. Source of truth for all item data. | Yes |
 | `functions/` | Cloudflare Pages Functions — the `/api/items` Worker. | Yes |
 | `docs/adr/` | Architecture decision records. | Yes |
 | `meetings/` | Hand-built level-3 detail pages (Tempe South is the reference — do not touch). | Yes |

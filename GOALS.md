@@ -75,23 +75,24 @@ Modules are independent. Each can be built and shipped without the others being 
 - `db/lib/topics.js` — shared subject/stage primitives (normKey, slug, sameSubject, deriveStage)
 - `CONTEXT.md` — canonical term definitions
 
-### 1. Pipeline — automated ingestion ✅ DONE (threading-aware)
+### 1. Pipeline — automated ingestion ✅ DONE (threading-aware, id-stable)
 
 *Fetches HTML from infocouncil.biz, extracts Subject + neutral Outcome with Claude, threads each Decision onto a persistent Topic via the alias store.*
 
-- `db/ingest.js` — auto-discovery pipeline; attaches-or-creates by subject (exact alias lookup), recomputes topic stage + union streets/suburbs from the full decision history; prunes re-slug orphan topics (+ their dangling aliases/images) at the end of every run
-- GitHub Actions workflow `.github/workflows/ingest.yml` — runs Mondays 9am Sydney
+- `db/append-weekly.js` — the scheduled importer (ADR 0009 — "correct in place and id-stable appender"): appends new meetings, fills newly published minutes in place by decision id (via `db/correct-in-place.js`), chains the sentence-labeller + stage recompute, exits red on any failure
+- Shared source/write code in `db/lib/infocouncil.js` (portal discovery, item splitting, extraction prompts), `db/lib/append-meeting.js` (attach-or-create by exact subject alias — never re-slugs), `db/lib/d1.js`
+- `db/ingest.js` — legacy manual tool only (first-time bulk ingestion); retired from the schedule 2026-07-11, its `--force` path is banned
+- GitHub Actions workflow `.github/workflows/weekly-append.yml` — runs Mondays 9am Sydney (replaced `ingest.yml`)
 - Credentials live in `.env` (gitignored) + GitHub secrets: `ANTHROPIC_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DATABASE_ID`, `CLOUDFLARE_D1_TOKEN`
 
-### 2. Scanner — detect new meetings automatically ⚠️ REGRESSED
+### 2. Scanner — detect new meetings automatically ✅ DONE (rebuilt 2026-07-11)
 *Extends the pipeline to check infocouncil.biz for new or updated documents.*
 
-- Check portal for new meetings not yet in D1
-- Re-check known meetings for newly published minutes — **currently broken**: the non-force ingest
-  skips known meetings, and the `--force` path that re-read them is retired (ADR 0009 — "correct in
-  place and id-stable appender"). The weekly job runs green but brings nothing in. Replacement is
-  #83 — "new council minutes aren't reaching the site: build the new weekly importer".
-- Run on GitHub Actions schedule — no manual triggering needed
+- Check portal for new meetings not yet in D1 — done by `db/append-weekly.js`
+- Re-check known meetings for newly published minutes — **restored** by the appender's second branch
+  (the 2026-06→07 regression: the old non-force ingest skipped known meetings, so the weekly job ran
+  green while importing nothing — fixed by #83, "new council minutes aren't reaching the site")
+- Run on GitHub Actions schedule — no manual triggering needed; a failed week now shows red
 
 ### 3. Frontend — resident-facing site
 *What residents actually see.*
@@ -137,7 +138,7 @@ Modules are independent. Each can be built and shipped without the others being 
 | 8 | Document tools (image conversion, PDF extraction) | ⏳ Partial — images ingested + served by the API, not shown | Milestone 3 |
 | 9 | Custom domain | ❌ Not started | Any time |
 | 10 | Honest middle layer: resident sentence + commitment tag per decision, six resident labels, contradiction flag, correct-in-place sweep against source (ADR 0008 — "honest labels by reading the resolution"; ADR 0009 — "correct in place and id-stable appender") | ✅ Done 2026-07-07 (sessions 17–22) | Milestone 5 |
-| 11 | Weekly id-stable importer — new meetings + newly published minutes flow in, get labelled, and go live with no human step (#83 — "new council minutes aren't reaching the site") | ❌ Not started — **the data is going stale until this lands** | Milestone 10 |
+| 11 | Weekly id-stable importer — new meetings + newly published minutes flow in, get labelled, and go live with no human step (#83 — "new council minutes aren't reaching the site") | ✅ Done 2026-07-11 (session 24) — proven on the 15 Jun LTF minutes: 15 outcomes filled in place, topic ids unchanged, 96 aliases intact | Milestone 10 |
 | 12 | Entity grouping — follow one big project as one thing (#85) | ❌ Not started (design + ADR first) | Milestone 10 |
 
 ---
