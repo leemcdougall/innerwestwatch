@@ -4,6 +4,59 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-11 (session 23) — Full project audit: home page repaired, backlog on the board, one source of truth per fact
+
+Lee asked whether the project is in the right place against its goals at every level, and said the
+main pain is not knowing what's going on. The audit's verdict: the data layer is genuinely strong; the
+delivery side had quietly broken. Three repairs this session.
+
+### The audit found
+- **The live home page had been broken since the session-18 API change**: every status badge rendered
+  the literal word "undefined" (the page read a `status` field the API no longer sends), every card
+  link pointed at "undefined", the 651 resident sentences were served and shown to no one, and the
+  site still described itself as transport-only.
+- **The weekly import job runs green but imports nothing**: the LTF 15 Jun 2026 minutes
+  (`LTF_15062026_MIN_4286.HTM`) have been on infocouncil for weeks and are not in D1. The non-force
+  ingest skips known meetings; the `--force` path that re-read them is retired (ADR 0009 — "correct in
+  place and id-stable appender"). Milestone 2's "re-check for newly published minutes" no longer happens.
+- **The backlog had left the ticket system**: the real next steps lived only as a list inside the
+  gitignored `memory/status.md`, while GitHub Issues (the documented single source of truth for work)
+  held none of them.
+
+### Fixed: the home page (`index.html`, minimal honest patch — not the Milestone 7 rebuild)
+- Badge shows the API's plain-English `label`, coloured by neutral `stage` (text always present, never
+  colour alone). Card title is the canonical `subject`; the misleading AI headline is off the card.
+- Card body is the latest decision's **resident sentence** (ADR 0008 finally visible to residents).
+- Card links to our detail page when one exists, else the source minutes/agenda on infocouncil.
+- Header/description updated to all-committees wording. Verified by running the page's real script
+  over the full live API payload in Node: 594/594 cards clean, 0 "undefined", 0 dead links.
+
+### Filed: the backlog as plain-English issues, all on the board (Todo)
+- **#83** (task: new council minutes aren't reaching the site — build the ADR 0009 weekly importer,
+  chaining the sentence-labeller so new decisions arrive translated). Priority 1.
+- **#84** (task: colour-blind status colours for the rebuild), **#85** (idea: let residents follow one
+  big project as one thing — entity grouping above topics), **#86** (task: frontend rebuild — ON HOLD,
+  Lee's call), **#87** (task: drop leftover merge-model tables).
+
+### Cleaned: one source of truth per fact, top down
+- Repo-root `MAP.md`: new "where each kind of fact lives" table (if two places disagree, the table's
+  home wins); removed phantom `topic.html` / `app/` entries (they exist only on the parked
+  Milestone 7 branch).
+- `GOALS.md`: Scanner module marked ⚠️ REGRESSED → #83; milestone table now shows the honest middle
+  layer as done (Milestone 10) and the importer/entity work as Milestones 11–12; the stale
+  "what's already built" list replaced with pointers.
+- `CONTEXT.md`: Stage and Outcome section compressed from session-by-session narration to the current
+  rules, history pointed at ADR 0008/0009.
+- `memory/status.md`: rewritten to current-state-only; next steps now read off GitHub Issues.
+
+### Decisions
+- Keep the live site simple until the middle layer settles (Lee): the repair is honesty maintenance,
+  not the rebuild.
+- Middle layer stays the priority; the weekly importer (#83) is the next build so the bottom layer
+  stays sound underneath it.
+
+---
+
 ## 2026-07-07 (session 22) — Fix #60 "the importer misreads council minutes" (lost-motion detail)
 
 Finished **#60 — "the importer misreads council minutes"**. The remaining sub-case: a *defeated*
