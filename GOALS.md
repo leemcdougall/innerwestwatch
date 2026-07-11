@@ -16,7 +16,13 @@ The transport-only digest was the first, easy-win test case. The scope is now **
 
 **Infrastructure first.** The data layer must be right — ingest, threading, the ability to ask "what's the latest on X?" and get a true answer — before the resident-facing frontend is rebuilt on top of it. See `docs/adr/0003` (persistent topics by subject threading) and `0004` (committee-neutral status).
 
-**Direction note (2026-07-04, under discussion, not yet an ADR):** session 16 reframed the middle layer around the distinct questions residents ask (change near me / what the council decided / follow a subject over time / have my say / did they follow through). Reading the data showed the followable unit residents want (e.g. the Leichhardt Aquatic Centre) sits a level above the current topic — one real-world project is spread across ~8 differently-named topics that threading can't join. Sequencing: honesty first (status/outcome semantics), then re-ingest safety (#45), then the entity/project grouping. **Honesty-first is now built** (session 18, ADR 0008): each of 651 decisions has a stored resident sentence + commitment tag, and stages reflect the actual resolution text (decided 347 / under-review 161, was 138 / 370). Next is widening `/api/items` to carry the sentence so the frontend can show it. Detail in the (gitignored) `memory/direction.md`; frontend (Milestone 7) waits on this settling.
+**Direction note:** the middle layer — the plain-language text and the links between issues — is the
+actual product, and it leads. The honesty work is **done** (ADR 0008 — "honest labels by reading the
+resolution": every decision carries a stored resident sentence + commitment tag, and a "no" reads as a
+"no"). What remains of the middle layer is #85 — "let residents follow one big project as one thing"
+(entity grouping above topics) — because one real-world project (e.g. the Leichhardt Aquatic Centre)
+is spread across ~8 differently-named topics that subject-threading can't join. Full reasoning in the
+(gitignored) `memory/direction.md`; the frontend rebuild (Milestone 7, #86) waits on this settling.
 
 ---
 
@@ -48,7 +54,7 @@ Many Decisions point to ONE Topic. We thread, never merge (ADR 0003). The learne
 
 ## API
 
-`GET /api/items` — served by `functions/api/items.js`. Returns one object per **Topic**, each with its threaded `decisions[]` history, neutral `stage`, and the union of `suburbs`/`streets`.
+`GET /api/items` — served by `functions/api/items.js`. Returns one object per **Topic**, each with its threaded `decisions[]` history (each decision carrying its plain-English `residentSentence` and honest `label`), neutral `stage` + resident `label`, the union of `suburbs`/`streets`, plus `relations[]` (linked topics) and `images[]` (infocouncil diagram URLs). Full shape documented at the top of `functions/api/items.js`.
 
 Filters:
 - `?suburb=Marrickville` — civic/interest filter (case-insensitive)
@@ -77,11 +83,14 @@ Modules are independent. Each can be built and shipped without the others being 
 - GitHub Actions workflow `.github/workflows/ingest.yml` — runs Mondays 9am Sydney
 - Credentials live in `.env` (gitignored) + GitHub secrets: `ANTHROPIC_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DATABASE_ID`, `CLOUDFLARE_D1_TOKEN`
 
-### 2. Scanner — detect new meetings automatically
+### 2. Scanner — detect new meetings automatically ⚠️ REGRESSED
 *Extends the pipeline to check infocouncil.biz for new or updated documents.*
 
 - Check portal for new meetings not yet in D1
-- Re-check known meetings for newly published minutes
+- Re-check known meetings for newly published minutes — **currently broken**: the non-force ingest
+  skips known meetings, and the `--force` path that re-read them is retired (ADR 0009 — "correct in
+  place and id-stable appender"). The weekly job runs green but brings nothing in. Replacement is
+  #83 — "new council minutes aren't reaching the site: build the new weekly importer".
 - Run on GitHub Actions schedule — no manual triggering needed
 
 ### 3. Frontend — resident-facing site
@@ -124,27 +133,21 @@ Modules are independent. Each can be built and shipped without the others being 
 | 4 | Persistent topics by subject threading + neutral status (ADR 0003/0004): schema, match.js, ingest rewrite, API | ✅ Done 2026-06-10 | Milestone 3 |
 | 5 | Backfill — thread the 357 existing decisions into real topics | ✅ Done 2026-06-10 | Milestone 4 |
 | 6 | Comprehensive link/touchpoint pass over all 285 topics — 100 human-confirmed links, now subject-keyed (`db/human-relations.json`) and re-materialized into `topic_relations` by `db/apply-relations.js` after each reingest (ADR 0006); all merge candidates routed to the ingest data-quality fix | ✅ Done 2026-06-13 (relations apply step 2026-06-21) | Milestone 5 |
-| 7 | Frontend rebuild on the threaded model (topic pages, street/suburb search crossing boundaries) | ❌ Not started | Milestone 5 |
-| 8 | Document tools (image conversion, PDF extraction) | ⏳ Partial — images ingested, not shown | Milestone 3 |
+| 7 | Frontend rebuild on the threaded model (#86 — "rebuild the resident-facing site": topic pages, street/suburb search crossing boundaries; colour-blind pass #84) | ⏸ ON HOLD (Lee's call) | Milestones 10, 11 |
+| 8 | Document tools (image conversion, PDF extraction) | ⏳ Partial — images ingested + served by the API, not shown | Milestone 3 |
 | 9 | Custom domain | ❌ Not started | Any time |
+| 10 | Honest middle layer: resident sentence + commitment tag per decision, six resident labels, contradiction flag, correct-in-place sweep against source (ADR 0008 — "honest labels by reading the resolution"; ADR 0009 — "correct in place and id-stable appender") | ✅ Done 2026-07-07 (sessions 17–22) | Milestone 5 |
+| 11 | Weekly id-stable importer — new meetings + newly published minutes flow in, get labelled, and go live with no human step (#83 — "new council minutes aren't reaching the site") | ❌ Not started — **the data is going stale until this lands** | Milestone 10 |
+| 12 | Entity grouping — follow one big project as one thing (#85) | ❌ Not started (design + ADR first) | Milestone 10 |
 
 ---
 
 ## What's already built
 
-- Home page with suburb-filtered card feed — fetches from `/api/items` (D1-backed, all committees)
-- Tempe South LATM detail page (`/meetings/ltf-18may2026/tempe-south/`)
-- `data/items.json` — historical record only (D1 is source of truth)
-- `CONTEXT.md` — canonical domain glossary
-- `docs/adr/` — ADRs: street filter (0001), offline dedup (0002, superseded), persistent topics by subject threading (0003), committee-neutral status (0004)
-- `db/schema.sql` — D1 schema (threaded topics, decision-level headline/outcome, `topic_subjects` alias store)
-- `db/migrations/` — `0001-topic-threading.sql` (applied), `0002-thread-backfill.sql` (applied)
-- `db/ingest.js` — auto-discovery pipeline; attaches-or-creates topics by subject
-- `db/match.js` — offline reconciliation / backfill tool (supersedes the removed `db/dedupe.js`)
-- `db/lib/topics.js` — shared subject/stage primitives
-- `db/migrate.js` + `db/seed.sql` — legacy seed tooling
-- `functions/api/items.js` — Worker API (serves threaded topics)
-- `wrangler.toml` — Cloudflare config
-- `.github/workflows/ingest.yml` — weekly scheduled ingest (Monday 9am AEST)
-- Cloudflare Pages deploy (auto-deploy from `main`)
-- Branch strategy: `claude/*` → `beta` → `main`
+Don't maintain a list here — it goes stale (this section once listed 4 ADRs when 9 existed). The
+sources of truth, per the table in the repo-root `MAP.md`:
+
+- **Code**: the module map above (each module says built/partial/not) + each directory's `MAP.md`.
+- **Data shape**: the live D1 query in `memory/status.md` — never a hardcoded count.
+- **Decisions**: `docs/adr/MAP.md` — the full, current ADR list.
+- **History**: `CHANGELOG.md`, session by session.
