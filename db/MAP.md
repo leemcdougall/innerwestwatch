@@ -9,7 +9,9 @@ honest. D1 is the source of truth, not `data/items.json`. The *why* behind this 
 | File | What it does |
 |---|---|
 | `schema.sql` | The live D1 schema (threaded topics + decisions + `topic_subjects` alias store). |
-| `ingest.js` | Main ingest: reads committee agendas, extracts decisions, attaches-or-creates topics by exact subject alias. Prunes orphans at the end. ⚠️ Do NOT run `--force` (issue #45). |
+| `append-weekly.js` | **The scheduled importer** (ADR 0009, #83): appends new meetings id-stably, fills newly published minutes in place via `correct-in-place.js`, chains `label-decisions.js` + `recompute-stages.js`. Runs Mondays via `.github/workflows/weekly-append.yml`; exits red on any failure. |
+| `correct-in-place.js` | Re-reads a meeting's agenda+minutes from source and corrects decisions **by id** (ADR 0009) — never re-slugs. `--dry-run` / `--only-null` / `--ids` / `--all`. Refuses to fabricate confidential outcomes; class-gated so correct rows are never churned. |
+| `ingest.js` | LEGACY manual bulk ingest (retired from the schedule 2026-07-11): reads committee agendas, extracts decisions, attaches-or-creates topics by exact subject alias. Prunes orphans at the end. ⚠️ Do NOT run `--force` (issue #45). |
 | `match.js` | Offline reconciliation/backfill: clusters topics, proposes fuzzy + cross-type links for human review. Never auto-merges. |
 | `apply-relations.js` | Re-runnable step that resolves `human-relations.json` subject pairs to current topic ids and writes `topic_relations`. |
 | `apply-subject-aliases.js` | Upserts verified subject→topic aliases from `relation-subject-aliases.json` so links survive re-ingest. |
@@ -25,9 +27,10 @@ honest. D1 is the source of truth, not `data/items.json`. The *why* behind this 
 ## Common commands
 
 ```bash
-node db/ingest.js                          # scan all committees, last 6 months
-node db/ingest.js --committee ltf          # one committee
-node db/ingest.js --meeting ltf-18may2026  # re-process one meeting
+node db/append-weekly.js --dry-run         # what would this week's run import? (no writes)
+node db/append-weekly.js                   # the weekly append: new meetings + new minutes + labels + stages
+node db/correct-in-place.js --meeting <id> --dry-run  # preview corrections against source
+node db/ingest.js --committee ltf          # LEGACY manual bulk ingest of one committee
 node db/match.js --dry-run                 # cluster + print link suggestions
 node db/recompute-stages.js                # re-apply the stage rule, no re-read
 node db/label-decisions.js --dry-run --sample   # preview honest labels on the trap cases
