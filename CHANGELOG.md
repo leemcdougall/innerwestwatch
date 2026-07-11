@@ -4,6 +4,46 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-07 (session 22) — Fix #60 "the importer misreads council minutes" (lost-motion detail)
+
+Finished **#60 — "the importer misreads council minutes"**. The remaining sub-case: a *defeated*
+motion whose stored detail still restated the motion as if it passed. Fixed the correction tool so it
+can't recur, and corrected the two live rows from source. No schema change; data shape unchanged
+(594 topics / 651 decisions).
+
+### What was wrong
+- The correct-in-place sweep only rewrote a decision when its **determination class** moved (approved →
+  rejected, etc.). A motion already correctly marked "rejected" but whose `resolution` restated the
+  motion slipped through the class-gate untouched.
+- A latent bug compounded it: `normalizeLabelResult` never returned a `resolution`, so the sweep's
+  UPDATE always kept the OLD `resolution` (`w.norm.resolution` was always `undefined`). That is why
+  `ltf-15sep2025-09`'s detail still read "Approved" even after **#68 — "the 7 contested decisions"**
+  had corrected its outcome to "not supported".
+
+### Fix (`db/correct-in-place.js`)
+- Added `restatesMotion()` + a within-class text check: a refusal whose stored resolution carries no
+  refusal marker is re-read from source and its resolution/sentence refreshed; the (correct) outcome
+  word is kept — no determination flip on this path.
+- Fixed the dropped-resolution write so the model's freshly-read detail actually reaches D1.
+
+### Data corrected (by id, from source)
+- `council-16jun2026-38` (civic-offices merger) — minutes read "Motion Lost. For: Crs Macri and Raciti.
+  Against: 12". Detail + resident sentence rewritten to record the defeat.
+- `ltf-15sep2025-09` ("No Parking" sign, rear Church St laneway, Marrickville) — detail said "Approved"
+  while outcome was "not supported"; now consistent (residents opposed; existing restriction unchanged).
+- Scan of all 21 refusal-class decisions confirms no other restatement. Two adjacent rows checked and
+  left honest: `ltf-15sep2025-10` (genuinely "not determined" — source re-read returned no change) and
+  `council-19aug2025-57` (blank detail, honest for a withdrawn/redundant motion).
+- `node db/recompute-stages.js`: 0 stage changes (only detail text moved, not the determination).
+
+### Shipped / logged
+- PR #80 (feature → beta) → PR #81 (beta → main). Evidence page: `memory/issue60-source-check.html`
+  (before/after + quoted minutes). Issue #60 closed (auto-closed by the "Fix #60" merge); board card →
+  Done. The other half of the original ticket (outcome bleeding across adjacent items) was already
+  caught by the sweep's class check and its known cases fixed under #68 (session 21).
+
+---
+
 ## 2026-07-07 (session 21) — Human check on the 7 contested decisions (resolve #68)
 
 Answered Lee's question about GitHub issue numbering (nothing to backfill — GitHub owns one shared,
