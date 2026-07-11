@@ -19,10 +19,12 @@ The transport-only digest was the first, easy-win test case. The scope is now **
 **Direction note:** the middle layer — the plain-language text and the links between issues — is the
 actual product, and it leads. The honesty work is **done** (ADR 0008 — "honest labels by reading the
 resolution": every decision carries a stored resident sentence + commitment tag, and a "no" reads as a
-"no"). What remains of the middle layer is #85 — "let residents follow one big project as one thing"
-(entity grouping above topics) — because one real-world project (e.g. the Leichhardt Aquatic Centre)
-is spread across ~8 differently-named topics that subject-threading can't join. Full reasoning in the
-(gitignored) `memory/direction.md`; the frontend rebuild (Milestone 7, #86) waits on this settling.
+"no"). The last middle-layer piece — #85, "let residents follow one big project as one thing" — is now
+**designed**: ADR 0010 — "Projects above topics" — defines a **Project** (Lee's name, 2026-07-11), a
+human-confirmed grouping above topics, because one real-world project (e.g. the Leichhardt Aquatic
+Centre, ~8 differently-named topics) can't be joined by subject-threading. The build is issues
+#92/#93/#94 (storage · seed the first Projects · API). Full reasoning in the (gitignored)
+`memory/direction.md`; the frontend rebuild (Milestone 7, #86) waits on the build landing.
 
 ---
 
@@ -49,6 +51,8 @@ See `CONTEXT.md` (repo root) for canonical definitions.
 **Topic** (persistent issue, carries a canonical **Subject** + neutral **Stage**) ← threads many **Decisions** → each Decision is one appearance at one Meeting, carrying its own headline + raw **Outcome**.
 
 Many Decisions point to ONE Topic. We thread, never merge (ADR 0003). The learned `topic_subjects` alias store attaches recurring subjects automatically so human oversight trends to zero. Residents follow Topics; Decisions are the evidence trail underneath.
+
+**Project** (ADR 0010, designed — build pending #92/#93/#94): a named real-world standing thing that groups many Topics (the pool, the GreenWay), human-confirmed, many-to-many, stored subject-keyed so re-imports can't destroy it. Residents will follow Projects as one timeline of all member decisions.
 
 ---
 
@@ -139,7 +143,7 @@ Modules are independent. Each can be built and shipped without the others being 
 | 9 | Custom domain | ❌ Not started | Any time |
 | 10 | Honest middle layer: resident sentence + commitment tag per decision, six resident labels, contradiction flag, correct-in-place sweep against source (ADR 0008 — "honest labels by reading the resolution"; ADR 0009 — "correct in place and id-stable appender") | ✅ Done 2026-07-07 (sessions 17–22) | Milestone 5 |
 | 11 | Weekly id-stable importer — new meetings + newly published minutes flow in, get labelled, and go live with no human step (#83 — "new council minutes aren't reaching the site") | ✅ Done 2026-07-11 (session 24) — proven on the 15 Jun LTF minutes: 15 outcomes filled in place, topic ids unchanged, 96 aliases intact | Milestone 10 |
-| 12 | Entity grouping — follow one big project as one thing (#85) | ❌ Not started (design + ADR first) | Milestone 10 |
+| 12 | Projects — follow one big project as one thing (#85 — "let residents follow one big project as one thing") | 🟡 Design accepted 2026-07-11 (ADR 0010 — "Projects above topics"); build issues filed: #92 storage · #93 propose+confirm the first Projects · #94 API | Milestone 10 |
 
 ---
 

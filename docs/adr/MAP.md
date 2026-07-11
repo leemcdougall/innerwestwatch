@@ -14,5 +14,6 @@ changing the data model or ingest — they explain *why* it's shaped this way.
 | `0007-under-review-stage-and-commitment-tag.md` | New `under-review` stage + `decisions.commitment` tag. | Current (extended by 0008) |
 | `0008-honest-labels-by-reading-the-resolution.md` | Read stored `resolution` → per-decision `{status, sentence, commitment}`; revives the commitment tag via the safe stored-text door; six resident labels; a "no" reads as "no"; nulls never upgraded from the headline. | Current |
 | `0009-correct-in-place-and-id-stable-appender.md` | Decouple reading source from re-slugging identity: keep the topic spine (ids + aliases) forever, correct decision data in place by id, append new meetings id-stably. Retires `ingest.js --force`; resolves #45 by construction. | Current |
+| `0010-projects-above-topics.md` | **Projects**: a followable, human-confirmed grouping above topics (the pool as one page). Subject-keyed JSON source + derived tables; machine proposes, human confirms; no rolled-up status; follow view = one timeline of all member decisions. | Current |
 
 **New decision → add an ADR here + a row above + update the `docs/` hook in the repo-root `MAP.md`.**

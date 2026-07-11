@@ -4,6 +4,53 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-11 (session 25) — Projects designed: follow one big thing as one page (#85 closed, ADR 0010)
+
+Design session, no build. Closed #85 — "let residents follow one big project as one thing" — by
+settling the design and recording it as ADR 0010 — "Projects above topics". The last middle-layer
+piece now has an accepted shape; the build is three new plain-English issues.
+
+### Decided (Lee's four product calls, all made 2026-07-11)
+- **The new thing is called a Project** — a named real-world standing thing (place, program, event or
+  works) that groups many topics. Chosen over "Story" (reads editorial) and "Place" (breaks for
+  festivals). Canonical definition added to `CONTEXT.md`.
+- **The follow page is one timeline**: every decision across all member topics, newest first, each
+  with its own resident sentence and honest label — the existing ADR 0008 sentence work reused one
+  level up.
+- **Machine proposes, human confirms** — nothing publishes without a yes; every yes is permanent
+  (subject-keyed), so oversight trends to zero.
+- **No rolled-up status word** — the page leads with the newest decision's sentence; members keep
+  their own labels. (The pool proves a single word would lie: Stage 2 underway, pool staffing still
+  being looked into.)
+
+### Grounded in live data (the clusters the design was judged against)
+- Leichhardt Park Aquatic Centre: 8 topics / 14 decisions, Aug 2025 – Jun 2026, joined by nothing.
+- GreenWay ~9 topics; Parramatta Rd corridor rezoning 3 topics.
+- Boundary evidence that set the safety rules: the Metro trap (rail line vs Marrickville Metro
+  shopping centre share a word), three distinct "aquatic centre" pools, and multi-pool items
+  (Dive-In Cinema) proving membership must be many-to-many.
+
+### Engineering shape (in the ADR, not built yet)
+- Source of truth `db/projects.json` (subject-keyed, human-chosen slug ids, version-controlled);
+  D1 `projects` + `project_topics` as derived projection via `db/apply-projects.js` — the exact
+  ADR 0006 pattern, so re-imports can't destroy a Project.
+- `topic_relations` (73 links) untouched; promotion of parent-child links to membership is a
+  per-link human call during seeding, never bulk.
+- API contract stated for the frontend rebuild (#86): per-topic `projects[]` + a project listing
+  with the latest decision as "where it's up to".
+
+### Issues
+- Opened **#92** (storage: projects.json + tables + apply script), **#93** (matcher proposes,
+  human confirms — seed the pool / GreenWay / Parramatta Rd), **#94** (serve Projects through the
+  API). Build order 92 → 93 → 94; all on the board as Todo.
+- Closed **#85** (the design idea — resolved into ADR 0010 + the three build issues).
+
+### Docs
+- New `docs/adr/0010-projects-above-topics.md` + MAP row; `CONTEXT.md` **Project** term + entry-point
+  mention; `GOALS.md` Milestone 12 → design accepted, direction note + core data model updated.
+
+---
+
 ## 2026-07-11 (session 24) — The site updates itself: the weekly importer is live (#83 closed)
 
 Built the id-stable weekly importer designed by ADR 0009 — "correct in place and id-stable appender" —
