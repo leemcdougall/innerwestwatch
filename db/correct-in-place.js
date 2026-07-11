@@ -223,6 +223,19 @@ function determinationClass(outcome) {
   return 'passed';
 }
 
+// #60 sub-case detector. A refusal row can be correctly CLASSED yet still carry a `resolution`
+// that RESTATES the defeated motion — the raw "That Council: 1. Notes that…" text as moved, or a
+// stale "Approved —" left behind when only the outcome word was corrected — instead of recording
+// the "no". Such a resolution contains none of the refusal markers a genuine refusal resolution
+// carries. We use this only to decide whether to RE-EXAMINE the text; the fresh source read is
+// what actually writes the honest resolution. Near-blank resolutions (e.g. a withdrawn item with
+// no recorded detail) are not restatements, so they are left alone rather than churned.
+function restatesMotion(resolution) {
+  const r = (resolution || '').trim();
+  if (r.length < 15) return false;
+  return !isRefusal(r);
+}
+
 // ─── process one meeting ─────────────────────────────────────────────────────────
 async function processMeeting(client, mid) {
   const [meeting] = await d1Query(
@@ -310,15 +323,30 @@ async function processMeeting(client, mid) {
     const afterClass = determinationClass(proposedOutcome);
     const isChange = beforeClass !== afterClass;
 
-    if (isChange) {
+    // #60 within-class text fix: the refusal class is already right (refused→refused) so the
+    // class-gate skips it, but the stored resolution still RESTATES the defeated motion. Catch it
+    // by inspecting the stored text. We keep the (correct) refusal outcome word and refresh only
+    // the resolution/sentence from the fresh source read — never a determination flip on this path.
+    const staleRefusalText =
+      !isChange && afterClass === 'refused' && restatesMotion(src.resolution);
+
+    // The resolution the model read from source this pass. Previously this never reached the
+    // write: normalizeLabelResult never returned a resolution, so `w.norm.resolution` was always
+    // undefined and the stale stored resolution silently persisted — the other half of #60.
+    const proposedResolution =
+      typeof r.resolution === 'string' && r.resolution.trim() ? r.resolution.trim() : null;
+
+    if (isChange || staleRefusalText) {
       changed++;
+      // A text-only fix keeps the already-correct outcome word; a class change adopts the new one.
+      const writeOutcome = isChange ? proposedOutcome : src.outcome;
       console.log(`\n  ▸ item ${r.item_number}  (${r.kind} · ${r.status})  ${src.id}`);
-      console.log(`      determ.:  ${beforeClass}   →   ${afterClass}`);
-      console.log(`      outcome:  ${src.outcome ?? 'null'}   →   ${proposedOutcome ?? 'null'}`);
+      console.log(`      reason:   ${isChange ? `${beforeClass} → ${afterClass}` : 'refusal text fix — stored resolution restated the motion'}`);
+      console.log(`      outcome:  ${src.outcome ?? 'null'}   →   ${writeOutcome ?? 'null'}`);
       console.log(`      label:    ${beforeLabel}   →   ${afterLabel}`);
       console.log(`      title:    ${src.agenda_title ?? src.headline ?? ''}`);
       console.log(`      says:     ${norm.resident_sentence ?? '(none)'}`);
-      writes.push({ src, proposedOutcome, norm, unclear });
+      writes.push({ src, proposedOutcome: writeOutcome, proposedResolution, norm, unclear });
     } else {
       same++;
     }
@@ -331,7 +359,7 @@ async function processMeeting(client, mid) {
       await d1Query(
         `UPDATE decisions SET outcome = ?, resolution = ?, commitment = ?, resident_sentence = ?, outcome_unclear = ?
            WHERE id = ?`,
-        [w.proposedOutcome, w.norm.resolution ?? w.src.resolution ?? null, w.norm.commitment,
+        [w.proposedOutcome, w.proposedResolution ?? w.src.resolution ?? null, w.norm.commitment,
          w.norm.resident_sentence, w.unclear ? 1 : 0, w.src.id]);
     }
     console.log(`  applied ${writes.length} update(s) to ${mid}.`);
