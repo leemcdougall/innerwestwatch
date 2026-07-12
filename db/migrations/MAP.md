@@ -13,5 +13,6 @@ The reasoning behind each is in `docs/adr/`.
 | `0006-clear-merge-duplicate-topics.sql` | Merged 4 confirmed duplicate-split topics (600 → 594). |
 | `0007-decision-commitment.sql` | Added `decisions.commitment` (action/process) for the `under-review` stage (ADR 0007). |
 | `0008-decision-resident-sentence.sql` | Added `decisions.resident_sentence` + `decisions.outcome_unclear` for the honest-label pass (ADR 0008). |
+| `0009-projects.sql` | Created `projects` + `project_topics` — the derived home of the Projects grouping (ADR 0010). Source of truth is `db/projects.json`; `apply-projects.js` re-materialises. |
 
 **Structural change → add the row here + update the `migrations/` line in `db/MAP.md`.**

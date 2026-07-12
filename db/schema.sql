@@ -147,6 +147,31 @@ CREATE TABLE IF NOT EXISTS topic_relations (
 CREATE INDEX IF NOT EXISTS idx_topic_relations_a ON topic_relations(topic_a);
 CREATE INDEX IF NOT EXISTS idx_topic_relations_b ON topic_relations(topic_b);
 
+-- ─── projects + project_topics ───────────────────────────────────────────────
+-- A Project is a followable grouping ABOVE topics (ADR 0010): one named real-world
+-- standing thing (the Leichhardt pool, the GreenWay) whose council appearances live
+-- on many differently-named topics. An annotation, never a merge — no topic row
+-- changes. Membership is many-to-many (one item can touch several pools).
+-- DERIVED tables: source of truth is db/projects.json (subject-keyed, human-chosen
+-- slug ids), re-materialised by db/apply-projects.js (added in migration 0009; kept
+-- here so a from-scratch rebuild matches live D1). No rolled-up status column by
+-- design — the follow view is a timeline of member decisions.
+CREATE TABLE IF NOT EXISTS projects (
+    id          TEXT PRIMARY KEY,          -- human-chosen slug; never minted by code
+    name        TEXT NOT NULL,             -- resident-facing name
+    description TEXT NOT NULL,             -- one plain-English line: what this thing is
+    created_at  TEXT NOT NULL              -- date the human confirmed the Project
+);
+CREATE TABLE IF NOT EXISTS project_topics (
+    project_id  TEXT NOT NULL REFERENCES projects(id),
+    topic_id    TEXT NOT NULL REFERENCES topics(id),
+    source      TEXT NOT NULL DEFAULT 'human' CHECK(source IN ('human', 'auto')),
+    created_at  TEXT NOT NULL,             -- date the human confirmed the membership
+    PRIMARY KEY (project_id, topic_id)     -- idempotent: re-confirming a membership is a no-op
+);
+CREATE INDEX IF NOT EXISTS idx_project_topics_project ON project_topics(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_topics_topic   ON project_topics(topic_id);
+
 -- ─── topic_merge_log ─────────────────────────────────────────────────────────
 -- Append-only audit log, retained from the ADR 0002 era for history. Not queried
 -- by the API. New linking is recorded in topic_subjects, not here.

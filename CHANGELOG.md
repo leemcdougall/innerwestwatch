@@ -4,6 +4,43 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-12 (session 26) — Projects get their permanent home (#92 closed)
+
+Build session, plumbing only. Closed #92 — "give Projects a permanent home that re-imports can't
+destroy" — the first of the three build tickets from ADR 0010 — "Projects above topics". No seeding
+(that's #93 — "find and confirm the first real Projects") and no API (that's #94 — "serve Projects
+through the site's data feed"): the tables are live and empty, waiting for the first confirmed groups.
+
+### Built
+- `db/migrations/0009-projects.sql` — two new D1 tables: `projects` (id = human-chosen slug, name,
+  one-line description) and `project_topics` (many-to-many membership, composite primary key, indexed
+  both ways). Applied to live D1 and re-run to prove idempotence (second run wrote 0 rows).
+- `db/projects.json` — the version-controlled source of truth, subject-keyed exactly like
+  `human-relations.json` so re-imports can't destroy a confirmed grouping. Empty apart from a `_meta`
+  block documenting the entry shape and the human-chosen-id rule.
+- `db/apply-projects.js` — the rebuild script, a deliberate mirror of `apply-relations.js`: resolves
+  each member subject to the current topic id (exact alias first, careful fuzzy fallback, refuses to
+  guess on ties), idempotent writes, unresolved-subjects report for human review. Flags
+  `--self-test` / `--dry-run` (default) / `--apply` / `--rebuild`. Safety guard: `--apply` on an
+  empty source aborts rather than write (or ever delete) from a possibly-broken read.
+
+### Verified
+- `--self-test`: 7/7 checks pass (resolver fixtures mirror apply-relations, plus a whole-pass fixture
+  covering collapse and unresolved paths, plus the empty-source case).
+- `--dry-run` against live D1 (690 aliases, 594 topics): empty source resolves cleanly to zero.
+- Empty-source `--apply` guard: refuses and exits non-zero.
+- Full D1 backup taken before the migration (`backups/pre-session26-20260712-100844.sql`, 1.1 MB).
+
+### Docs
+- `db/schema.sql` gains the two tables (it tracks live D1); rows added to `db/MAP.md` and
+  `db/migrations/MAP.md`; Milestone 12 status updated in `GOALS.md`.
+
+### Issues
+- Closed #92 (task: give Projects a permanent home that re-imports can't destroy). Next: #93 (task:
+  find and confirm the first real Projects), then #94 (task: serve Projects through the site's data feed).
+
+---
+
 ## 2026-07-11 (session 25) — Projects designed: follow one big thing as one page (#85 closed, ADR 0010)
 
 Design session, no build. Closed #85 — "let residents follow one big project as one thing" — by

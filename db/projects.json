@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "description": "Source of truth for Projects (ADR 0010): human-confirmed groupings of many topics into one followable real-world thing (a place, program, event or works). Keyed by SUBJECT, not topic id, so they survive re-import slug churn — the same protection human-relations.json gives the saved links. Re-materialise into the D1 tables projects + project_topics with: node db/apply-projects.js --apply",
+    "id_rule": "Every project id is a HUMAN-CHOSEN slug — a person writes it, it is never derived from AI-extracted text, and no code mints one. Once chosen it never changes.",
+    "entry_shape": {
+      "id": "human-chosen-slug",
+      "name": "Resident-facing name",
+      "description": "One plain-English line: what this real-world thing is.",
+      "created_at": "YYYY-MM-DD (the date a human confirmed the Project)",
+      "members": [
+        {
+          "subject": "The member topic's subject as it appears in D1 (resolved to the current topic id via the topic_subjects alias store at apply time)",
+          "source": "human",
+          "created_at": "YYYY-MM-DD (the date a human confirmed this membership)"
+        }
+      ]
+    },
+    "created_on": "2026-07-12 — session 26, issue #92 (storage only). Empty by design: seeding the first real Projects (the pool, the GreenWay, the Parramatta Rd corridor) is issue #93's job, where each membership is confirmed against the infocouncil source documents, never against stored headlines.",
+    "count": 0
+  },
+  "projects": []
+}
