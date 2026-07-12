@@ -143,7 +143,7 @@ Modules are independent. Each can be built and shipped without the others being 
 | 9 | Custom domain | ❌ Not started | Any time |
 | 10 | Honest middle layer: resident sentence + commitment tag per decision, six resident labels, contradiction flag, correct-in-place sweep against source (ADR 0008 — "honest labels by reading the resolution"; ADR 0009 — "correct in place and id-stable appender") | ✅ Done 2026-07-07 (sessions 17–22) | Milestone 5 |
 | 11 | Weekly id-stable importer — new meetings + newly published minutes flow in, get labelled, and go live with no human step (#83 — "new council minutes aren't reaching the site") | ✅ Done 2026-07-11 (session 24) — proven on the 15 Jun LTF minutes: 15 outcomes filled in place, topic ids unchanged, 96 aliases intact | Milestone 10 |
-| 12 | Projects — follow one big project as one thing (#85 — "let residents follow one big project as one thing") | 🟡 Design accepted 2026-07-11 (ADR 0010 — "Projects above topics"); build issues filed: #92 storage · #93 propose+confirm the first Projects · #94 API | Milestone 10 |
+| 12 | Projects — follow one big project as one thing (#85 — "let residents follow one big project as one thing") | 🟡 Storage built 2026-07-12 (#92 — "give Projects a permanent home", session 26): `db/projects.json` source + D1 `projects`/`project_topics` tables (migration 0009) + `db/apply-projects.js` rebuild script, empty until seeding. Next: #93 propose+confirm the first Projects · #94 serve Projects through the site's data feed | Milestone 10 |
 
 ---
 
