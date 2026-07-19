@@ -20,11 +20,20 @@ The transport-only digest was the first, easy-win test case. The scope is now **
 actual product, and it leads. The honesty work is **done** (ADR 0008 — "honest labels by reading the
 resolution": every decision carries a stored resident sentence + commitment tag, and a "no" reads as a
 "no"). The last middle-layer piece — #85, "let residents follow one big project as one thing" — is now
-**designed**: ADR 0010 — "Projects above topics" — defines a **Project** (Lee's name, 2026-07-11), a
-human-confirmed grouping above topics, because one real-world project (e.g. the Leichhardt Aquatic
-Centre, ~8 differently-named topics) can't be joined by subject-threading. The build is issues
-#92/#93/#94 (storage · seed the first Projects · API). Full reasoning in the (gitignored)
-`memory/direction.md`; the frontend rebuild (Milestone 7, #86) waits on the build landing.
+**designed and two-thirds built**: ADR 0010 — "Projects above topics" — defines a **Project** (Lee's
+name, 2026-07-11), a human-confirmed grouping above topics, because one real-world project (e.g. the
+Leichhardt Aquatic Centre, 7 differently-named topics) can't be joined by subject-threading. The build
+is issues #92/#93/#94 (storage · seed the first Projects · API):
+
+- ✅ **#92 storage** (2026-07-12, session 26) — `db/projects.json` + D1 `projects`/`project_topics`.
+- ✅ **#93 seeding** (2026-07-19, session 28) — the first four Projects confirmed and live: the
+  Leichhardt pool (7 topics), the GreenWay (8), Our Fairer Future (7), Parramatta Rd corridor (3).
+  25 memberships, all resolving to exactly one topic. #93 stays open only for the owed
+  source-document verification pass; scoring of the proposal tool split out to #101.
+- ⬜ **#94 API** — serve Projects through `/api/items` so the site can render a follow view.
+
+Full reasoning in the (gitignored) `memory/direction.md`; the frontend rebuild (Milestone 7, #86)
+waits on #94 landing.
 
 ---
 
@@ -52,7 +61,7 @@ See `CONTEXT.md` (repo root) for canonical definitions.
 
 Many Decisions point to ONE Topic. We thread, never merge (ADR 0003). The learned `topic_subjects` alias store attaches recurring subjects automatically so human oversight trends to zero. Residents follow Topics; Decisions are the evidence trail underneath.
 
-**Project** (ADR 0010, designed — build pending #92/#93/#94): a named real-world standing thing that groups many Topics (the pool, the GreenWay), human-confirmed, many-to-many, stored subject-keyed so re-imports can't destroy it. Residents will follow Projects as one timeline of all member decisions.
+**Project** (ADR 0010, storage + first seeding live — API pending #94): a named real-world standing thing that groups many Topics (the pool, the GreenWay), human-confirmed, many-to-many, stored subject-keyed so re-imports can't destroy it. Residents will follow Projects as one timeline of all member decisions. Four live as of 2026-07-19.
 
 ---
 
