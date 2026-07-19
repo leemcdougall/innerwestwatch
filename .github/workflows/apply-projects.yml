@@ -1,0 +1,54 @@
+# Materialise the confirmed Projects (ADR 0010, issue #93) from db/projects.json into the
+# live D1 tables `projects` + `project_topics`.
+#
+# Why this runs here and not on a laptop: db/apply-projects.js authenticates with
+# CLOUDFLARE_D1_TOKEN, which lives only as a repo secret — Wrangler's OAuth login does not
+# supply it. Running the apply in Actions is the one place the credential already exists, so
+# re-seeding never needs a token copied onto a personal machine.
+#
+# Manual only, never scheduled: projects.json changes when a HUMAN confirms a grouping
+# (ADR 0010 — the machine proposes, a person confirms), so the write should follow that
+# confirmation, not a clock.
+#
+# Defaults to a dry run. The apply is idempotent, and apply-projects.js refuses to write
+# from an empty source, so a broken read can never blank the tables.
+name: Apply confirmed Projects
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to do'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options:
+          - dry-run   # resolve every member subject and print, write nothing
+          - apply     # write projects + memberships (idempotent, additive)
+          - rebuild   # drop memberships not in projects.json, then apply
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Cheap and fast, and it catches a broken resolver before anything touches D1.
+      - name: Self-test the resolver
+        run: node db/apply-projects.js --self-test
+
+      - name: Apply Projects
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_DATABASE_ID: ${{ secrets.CLOUDFLARE_DATABASE_ID }}
+          CLOUDFLARE_D1_TOKEN: ${{ secrets.CLOUDFLARE_D1_TOKEN }}
+          GITHUB_ACTIONS: 'true'
+        run: node db/apply-projects.js --${{ github.event.inputs.mode }}
