@@ -4,6 +4,67 @@ Entries are in reverse chronological order. Each entry covers a session or miles
 
 ---
 
+## 2026-07-19 (session 28) — the first four Projects are live
+
+The payoff session for ADR 0010 — "Projects above topics". A resident can now follow the Leichhardt
+pool as **one story** instead of hunting through seven separately-named council items. Nothing visible
+on the site yet: rendering the follow view is #94.
+
+Also picked up session 27's unshipped work — `db/propose-projects.js` had been committed to
+`claude/session27-projects-seeding` but never merged or PR'd.
+
+### Confirmed and applied
+
+| Project | Topics | Span |
+|---|---|---|
+| `leichhardt-park-aquatic-centre` | 7 | Aug 2025 – May 2026 |
+| `greenway` | 8 | Aug 2025 – Jun 2026 |
+| `our-fairer-future-plan` | 7 | Aug 2025 – Apr 2026 |
+| `parramatta-road-corridor` | 3 | Sep 2025 – Apr 2026 |
+
+`db/projects.json` seeded with 25 memberships. Three scope calls made by Lee in-session and recorded
+in `_meta.seeded_on`: the Leichhardt Park wharf stays **out** of the pool Project (same park, different
+facility); the Greenway Art Prize and Gadigal Greenway lighting stay **out** of the GreenWay
+(branded-after; different corridor); Parramatta Rd stays **separate** from Our Fairer Future rather
+than merging into one housing Project. Our Fairer Future was a fourth Project not in the original
+three — the clearest thread in the dataset, so it went in the first batch.
+
+### Built
+- `.github/workflows/apply-projects.yml` — manual-dispatch workflow running `db/apply-projects.js`.
+  **Why:** the script authenticates with `CLOUDFLARE_D1_TOKEN`, which exists only as a repo secret;
+  wrangler's OAuth login doesn't supply it, so the apply cannot run locally at all. Actions is the one
+  place the credential already lives, and this means re-seeding never needs a token on a personal
+  machine. Defaults to dry-run, self-tests the resolver before touching D1.
+
+### Verified
+- Dry run: 25/25 memberships resolved by **exact alias**, 0 unresolved, 0 collapsed.
+- Apply: 25 inserted. Live D1 checked independently of the script's own report — 4 projects, 25 memberships.
+- Follow view spot-checked on the pool: 13 decisions across 11 months reading as one coherent
+  narrative (playground plans → all tenders rejected → Stage 1 opens 15 Feb → FDC approved for
+  Stage 2 → 29 June closure notice). The concept holds up end to end.
+
+### Decisions
+- **#93 stays open.** It specifies memberships confirmed against the infocouncil **source documents**;
+  they were confirmed against topic subjects and meeting dates in D1 instead. All 25 are self-evident
+  from a named facility, corridor or plan in the subject line, so risk is low — but the source-document
+  pass is genuinely owed before these drive a public page, and closing the issue would misreport that.
+- **No D1 backup taken** before the apply, unlike session 26's migration: the write was additive into
+  two empty tables and reversible with a `DELETE`.
+
+### Issues
+- Opened **#101** (task: rank Project suggestions by what's distinctive, not by pile size). Session 27's
+  `db/propose-projects.js` works — it found all four Projects — but scores by cluster size, so the top
+  of its 237-candidate queue is generic-word sludge (rank 1 groups the audit committee minutes with a
+  bike forum on the word "meeting") while the real Projects sat at ranks 10, 52 and 136. The pool never
+  clustered cleanly at all. The four confirmed Projects are now a ground-truth set to re-rank against.
+- **#93** commented with status, left open (see above). **#94** (API) is now the next thing.
+
+### Not done
+- Kanban board not updated — `gh` is missing the `read:project` scope and `gh auth refresh` needs an
+  interactive browser flow. #101's card needs adding to Todo by hand, or the scope granted.
+
+---
+
 ## 2026-07-12 (session 26) — Projects get their permanent home (#92 closed)
 
 Build session, plumbing only. Closed #92 — "give Projects a permanent home that re-imports can't
