@@ -39,7 +39,7 @@ Audience: neighbours who would never read a council agenda but care when road wo
 ## Repo and live site
 
 **Repo:** https://github.com/leemcdougall/innerwestwatch  
-**Local:** `/Users/user/Library/CloudStorage/Box-Box/Lee's Documents/innerwestwatch/` — this IS the git repo root. No subdirectories.  
+**Local:** `/Users/lee/Library/CloudStorage/Box-Box/Lee's Documents/innerwestwatch/` — this IS the git repo root. No subdirectories.  
 **Live site:** https://innerwestwatch.pages.dev  
 **Host:** Cloudflare Pages (account: Leeamcdougall@gmail.com) — auto-deploys on every push to `main`.
 
@@ -49,7 +49,7 @@ Audience: neighbours who would never read a council agenda but care when road wo
 
 The layout lives in `MAP.md` (repo root), and each directory has its own `MAP.md` describing what's in
 it and pointing further down. **Don't duplicate the tree here — read the maps.** Local root:
-`/Users/user/Library/CloudStorage/Box-Box/Lee's Documents/innerwestwatch/` — this IS the git repo root,
+`/Users/lee/Library/CloudStorage/Box-Box/Lee's Documents/innerwestwatch/` — this IS the git repo root,
 no subdirectories.
 
 **The `MAP.md` convention (this is how the project stays consistent):**
@@ -218,7 +218,7 @@ Memory is split by *what it's about*, so the two homes never overlap or drift:
    it here.
 
 2. **General memory → the harness store** at
-   `~/.claude/projects/-Users-ca-Library-CloudStorage-Box-Box-Lee-s-Documents-innerwestwatch/memory/`.
+   `~/.claude/projects/-Users-lee-Library-CloudStorage-Box-Box-Lee-s-Documents-innerwestwatch/memory/`.
    Only genuinely cross-project things: who Lee is, his machine, his general working/writing style. Its
    `MEMORY.md` index points here, to the repo, for anything project-specific.
 
